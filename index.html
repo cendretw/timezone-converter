@@ -1,0 +1,788 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>互動地球時區轉換器</title>
+  <meta name="description" content="輸入所在地、目的地與線上研習資訊，快速轉換時區並新增到 Google 日曆。">
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17202a;
+      --muted: #657080;
+      --line: #d8e1e8;
+      --paper: #fbfcf8;
+      --panel: #ffffff;
+      --sea: #83c9de;
+      --land: #82c98b;
+      --sun: #f4c64e;
+      --coral: #ff7d6e;
+      --teal: #167d8a;
+      --shadow: 0 18px 45px rgba(35, 52, 67, .14);
+      font-family: "Segoe UI", "Noto Sans TC", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top left, rgba(244, 198, 78, .28), transparent 34rem),
+        linear-gradient(135deg, #f8fbff 0%, var(--paper) 46%, #eef9f6 100%);
+      color: var(--ink);
+    }
+
+    main {
+      width: min(1180px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 22px 0 30px;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: minmax(280px, 420px) 1fr;
+      gap: 18px;
+      align-items: stretch;
+      min-height: calc(100vh - 52px);
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: linear-gradient(180deg, #fdfefe, #eaf7fa);
+      box-shadow: var(--shadow);
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 590px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(2rem, 4.8vw, 4.4rem);
+      line-height: .98;
+      letter-spacing: 0;
+      max-width: 10ch;
+    }
+
+    .intro {
+      margin: 14px 0 0;
+      color: var(--muted);
+      font-size: 1rem;
+      line-height: 1.65;
+      max-width: 32rem;
+    }
+
+    .globe-wrap {
+      position: relative;
+      display: grid;
+      place-items: center;
+      min-height: 315px;
+      margin-top: 18px;
+    }
+
+    .globe {
+      position: relative;
+      width: min(76vw, 300px);
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 32% 26%, rgba(255, 255, 255, .75), transparent 16%),
+        radial-gradient(circle at 50% 50%, var(--sea), #48a9c5);
+      border: 5px solid #fff;
+      box-shadow: inset -22px -26px 0 rgba(29, 96, 124, .18), 0 18px 36px rgba(28, 80, 98, .2);
+      animation: float 5s ease-in-out infinite;
+    }
+
+    .globe::before,
+    .globe::after,
+    .continent {
+      content: "";
+      position: absolute;
+      background: var(--land);
+      border: 3px solid rgba(255, 255, 255, .72);
+      border-radius: 46% 54% 54% 46% / 48% 35% 65% 52%;
+    }
+
+    .globe::before {
+      width: 42%;
+      height: 34%;
+      left: 18%;
+      top: 28%;
+      transform: rotate(-20deg);
+    }
+
+    .globe::after {
+      width: 34%;
+      height: 42%;
+      right: 15%;
+      top: 20%;
+      transform: rotate(24deg);
+    }
+
+    .continent {
+      width: 30%;
+      height: 20%;
+      right: 22%;
+      bottom: 18%;
+      transform: rotate(-9deg);
+    }
+
+    .route {
+      position: absolute;
+      width: min(82vw, 340px);
+      height: min(82vw, 340px);
+      border: 2px dashed rgba(22, 125, 138, .5);
+      border-radius: 50%;
+      animation: spin 16s linear infinite;
+    }
+
+    .pin {
+      position: absolute;
+      display: grid;
+      place-items: center;
+      width: 44px;
+      height: 44px;
+      border-radius: 50% 50% 50% 8px;
+      background: var(--coral);
+      color: #fff;
+      font-weight: 800;
+      box-shadow: 0 12px 22px rgba(255, 125, 110, .28);
+    }
+
+    .pin.start { left: 20%; top: 29%; transform: rotate(-45deg); }
+    .pin.end { right: 14%; bottom: 24%; transform: rotate(-45deg); background: var(--teal); }
+    .pin span { transform: rotate(45deg); }
+
+    .status-strip {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .status {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .76);
+      padding: 12px;
+    }
+
+    .status b {
+      display: block;
+      font-size: .78rem;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+
+    .status span {
+      font-weight: 800;
+      word-break: break-word;
+    }
+
+    .workspace {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .9);
+      box-shadow: var(--shadow);
+      padding: 16px;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      gap: 14px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 12px;
+    }
+
+    .tab {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .tab[aria-selected="true"] {
+      background: var(--ink);
+      color: #fff;
+      border-color: var(--ink);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    label {
+      font-size: .88rem;
+      font-weight: 800;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      padding: 11px 12px;
+      min-height: 46px;
+    }
+
+    textarea {
+      min-height: 88px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus,
+    button:focus-visible {
+      outline: 3px solid rgba(22, 125, 138, .24);
+      outline-offset: 2px;
+    }
+
+    .wide { grid-column: 1 / -1; }
+
+    .hint {
+      color: var(--muted);
+      font-size: .82rem;
+      line-height: 1.35;
+    }
+
+    .choice-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .choice {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 11px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 800;
+      cursor: pointer;
+      min-height: 46px;
+    }
+
+    .choice:has(input:checked) {
+      border-color: var(--teal);
+      background: #edf8f8;
+      color: #0b6772;
+    }
+
+    .results {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .result {
+      min-height: 118px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 13px;
+      background: #f9fcfd;
+    }
+
+    .result h2 {
+      margin: 0 0 10px;
+      font-size: .9rem;
+      color: var(--muted);
+    }
+
+    .time {
+      display: block;
+      font-size: clamp(1.28rem, 3vw, 2rem);
+      font-weight: 900;
+      line-height: 1.05;
+      word-break: break-word;
+    }
+
+    .date {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .button {
+      border: 0;
+      border-radius: 8px;
+      min-height: 46px;
+      padding: 11px 14px;
+      color: #fff;
+      background: var(--teal);
+      font: inherit;
+      font-weight: 850;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .button.secondary {
+      background: var(--sun);
+      color: #30260b;
+    }
+
+    .button.ghost {
+      background: #fff;
+      color: var(--ink);
+      border: 1px solid var(--line);
+    }
+
+    .summary {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 12px;
+      color: var(--muted);
+      line-height: 1.55;
+      min-height: 72px;
+    }
+
+    .hidden { display: none; }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @media (max-width: 920px) {
+      .app { grid-template-columns: 1fr; }
+      .hero { min-height: auto; }
+      .results { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 640px) {
+      main { width: min(100% - 18px, 1180px); padding: 9px 0 18px; }
+      .hero, .workspace { padding: 14px; }
+      .grid, .status-strip { grid-template-columns: 1fr; }
+      .tab { flex: 1; padding-inline: 8px; }
+      .globe-wrap { min-height: 250px; }
+      .pin { width: 38px; height: 38px; }
+      .actions .button { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="app" aria-label="互動地球時區轉換器">
+      <aside class="hero">
+        <div>
+          <h1>地球另一端，時間不再猜。</h1>
+          <p class="intro">輸入所在地、目的地與研習時間，立刻換算成雙方時區，並整理成可加入 Google 日曆的線上活動。</p>
+        </div>
+
+        <div class="globe-wrap" aria-hidden="true">
+          <div class="route"></div>
+          <div class="globe"><i class="continent"></i></div>
+          <div class="pin start"><span>我</span></div>
+          <div class="pin end"><span>去</span></div>
+        </div>
+
+        <div class="status-strip" aria-live="polite">
+          <div class="status">
+            <b>所在地</b>
+            <span id="sourceStatus">Asia/Taipei</span>
+          </div>
+          <div class="status">
+            <b>目的地</b>
+            <span id="targetStatus">America/New_York</span>
+          </div>
+        </div>
+      </aside>
+
+      <section class="workspace">
+        <nav class="tabs" aria-label="工具分頁">
+          <button class="tab" type="button" aria-selected="true" data-panel="convert">時區轉換</button>
+          <button class="tab" type="button" aria-selected="false" data-panel="event">研習資訊</button>
+        </nav>
+
+        <form id="toolForm">
+          <section id="convert" class="panel">
+            <div class="grid">
+              <div class="field">
+                <label for="sourcePlace">我的所在地</label>
+                <input id="sourcePlace" list="placeList" value="Taipei" autocomplete="off">
+                <span class="hint">可輸入城市、PDT/EDT 等縮寫，或直接選時區。</span>
+              </div>
+              <div class="field">
+                <label for="sourceZone">我的時區</label>
+                <select id="sourceZone"></select>
+              </div>
+              <div class="field">
+                <label for="targetPlace">目的地</label>
+                <input id="targetPlace" list="placeList" value="New York" autocomplete="off">
+                <span class="hint">例如 Tokyo、London、Los Angeles，也可輸入 PDT。</span>
+              </div>
+              <div class="field">
+                <label for="targetZone">目的地時區</label>
+                <select id="targetZone"></select>
+              </div>
+              <div class="field wide">
+                <label>這個日期時間是誰的？</label>
+                <div class="choice-row" role="radiogroup" aria-label="日期時間來源">
+                  <label class="choice"><input type="radio" name="timeOwner" value="source" checked> 我的時間</label>
+                  <label class="choice"><input type="radio" name="timeOwner" value="target"> 對方公告時間</label>
+                </div>
+              </div>
+              <div class="field wide">
+                <label for="sourceDateTime" id="dateTimeLabel">我的日期時間</label>
+                <input id="sourceDateTime" type="datetime-local">
+                <span class="hint" id="dateTimeHint">如果你拿到的是對方公告時間，請切換成「對方公告時間」。</span>
+              </div>
+            </div>
+          </section>
+
+          <section id="event" class="panel hidden">
+            <div class="grid">
+              <div class="field wide">
+                <label for="eventTitle">線上研習名稱</label>
+                <input id="eventTitle" value="線上研習">
+              </div>
+              <div class="field">
+                <label for="duration">研習長度</label>
+                <select id="duration">
+                  <option value="30">30 分鐘</option>
+                  <option value="60" selected>1 小時</option>
+                  <option value="90">1.5 小時</option>
+                  <option value="120">2 小時</option>
+                  <option value="180">3 小時</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="reminder">提醒我</label>
+                <select id="reminder">
+                  <option value="10">10 分鐘前</option>
+                  <option value="15" selected>15 分鐘前</option>
+                  <option value="30">30 分鐘前</option>
+                  <option value="60">1 小時前</option>
+                  <option value="1440">1 天前</option>
+                </select>
+              </div>
+              <div class="field wide">
+                <label for="videoUrl">視訊連結</label>
+                <input id="videoUrl" type="url" placeholder="https://meet.google.com/... 或 Zoom / Teams 連結">
+              </div>
+              <div class="field wide">
+                <label for="notes">備註</label>
+                <textarea id="notes" placeholder="講師、主辦單位、注意事項"></textarea>
+              </div>
+            </div>
+          </section>
+        </form>
+
+        <section aria-label="轉換結果">
+          <div class="results">
+            <article class="result">
+              <h2>我的時間</h2>
+              <span class="time" id="sourceTime">--:--</span>
+              <span class="date" id="sourceDate">請輸入時間</span>
+            </article>
+            <article class="result">
+              <h2>目的地時間</h2>
+              <span class="time" id="targetTime">--:--</span>
+              <span class="date" id="targetDate">請輸入時間</span>
+            </article>
+            <article class="result">
+              <h2>時間差</h2>
+              <span class="time" id="offsetText">--</span>
+              <span class="date" id="dayHint">自動判斷跨日</span>
+            </article>
+          </div>
+
+          <p class="summary" id="eventSummary">填好時間後，這裡會整理可加入日曆的研習摘要。</p>
+
+          <div class="actions">
+            <a class="button" id="googleLink" href="#" target="_blank" rel="noopener">＋ Google 日曆</a>
+            <button class="button secondary" id="downloadIcs" type="button">下載提醒檔</button>
+            <button class="button ghost" id="copySummary" type="button">複製摘要</button>
+          </div>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <datalist id="placeList"></datalist>
+
+  <script>
+    const places = [
+      ["Taipei", "Asia/Taipei"], ["Kaohsiung", "Asia/Taipei"], ["Tokyo", "Asia/Tokyo"],
+      ["Seoul", "Asia/Seoul"], ["Singapore", "Asia/Singapore"], ["Hong Kong", "Asia/Hong_Kong"],
+      ["Shanghai", "Asia/Shanghai"], ["Beijing", "Asia/Shanghai"], ["Bangkok", "Asia/Bangkok"],
+      ["Sydney", "Australia/Sydney"], ["Melbourne", "Australia/Melbourne"], ["Auckland", "Pacific/Auckland"],
+      ["London", "Europe/London"], ["Paris", "Europe/Paris"], ["Berlin", "Europe/Berlin"],
+      ["Rome", "Europe/Rome"], ["Madrid", "Europe/Madrid"], ["Amsterdam", "Europe/Amsterdam"],
+      ["New York", "America/New_York"], ["Boston", "America/New_York"], ["Washington DC", "America/New_York"],
+      ["Chicago", "America/Chicago"], ["Denver", "America/Denver"], ["Los Angeles", "America/Los_Angeles"],
+      ["San Francisco", "America/Los_Angeles"], ["Seattle", "America/Los_Angeles"], ["Vancouver", "America/Vancouver"],
+      ["Toronto", "America/Toronto"], ["Mexico City", "America/Mexico_City"], ["Sao Paulo", "America/Sao_Paulo"],
+      ["Dubai", "Asia/Dubai"], ["Mumbai", "Asia/Kolkata"], ["Delhi", "Asia/Kolkata"],
+      ["Johannesburg", "Africa/Johannesburg"], ["Cairo", "Africa/Cairo"],
+      ["PDT", "America/Los_Angeles"], ["Pacific Daylight Time", "America/Los_Angeles"],
+      ["PST", "America/Los_Angeles"], ["Pacific Standard Time", "America/Los_Angeles"],
+      ["EDT", "America/New_York"], ["Eastern Daylight Time", "America/New_York"],
+      ["EST", "America/New_York"], ["Eastern Standard Time", "America/New_York"],
+      ["CDT", "America/Chicago"], ["Central Daylight Time", "America/Chicago"],
+      ["CST (US Central)", "America/Chicago"], ["MDT", "America/Denver"],
+      ["MST", "America/Denver"], ["GMT", "Etc/GMT"], ["UTC", "Etc/UTC"],
+      ["BST", "Europe/London"], ["CET", "Europe/Paris"], ["CEST", "Europe/Paris"],
+      ["JST", "Asia/Tokyo"], ["KST", "Asia/Seoul"], ["SGT", "Asia/Singapore"]
+    ];
+
+    const fallbackZones = [
+      "Asia/Taipei", "Asia/Tokyo", "Asia/Seoul", "Asia/Singapore", "Asia/Hong_Kong", "Asia/Shanghai",
+      "Asia/Bangkok", "Asia/Dubai", "Asia/Kolkata", "Australia/Sydney", "Pacific/Auckland",
+      "Europe/London", "Europe/Paris", "Europe/Berlin", "America/New_York", "America/Chicago",
+      "America/Denver", "America/Los_Angeles", "America/Vancouver", "America/Toronto", "America/Sao_Paulo"
+    ];
+
+    const $ = (id) => document.getElementById(id);
+    const zones = Intl.supportedValuesOf ? Intl.supportedValuesOf("timeZone") : fallbackZones;
+    const deviceZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Taipei";
+
+    function fillZones(select) {
+      zones.forEach((zone) => {
+        const option = document.createElement("option");
+        option.value = zone;
+        option.textContent = zone.replaceAll("_", " ");
+        select.appendChild(option);
+      });
+    }
+
+    function formatInZone(date, zone, options) {
+      return new Intl.DateTimeFormat("zh-TW", { timeZone: zone, ...options }).format(date);
+    }
+
+    function partsInZone(date, zone) {
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+      }).formatToParts(date).reduce((acc, part) => {
+        acc[part.type] = part.value;
+        return acc;
+      }, {});
+      return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+    }
+
+    function zonedTimeToUtc(localValue, zone) {
+      const [datePart, timePart] = localValue.split("T");
+      const [year, month, day] = datePart.split("-").map(Number);
+      const [hour, minute] = timePart.split(":").map(Number);
+      let guess = new Date(Date.UTC(year, month - 1, day, hour, minute));
+      for (let i = 0; i < 4; i += 1) {
+        const shown = partsInZone(guess, zone);
+        const asIfUtc = new Date(`${shown}:00Z`);
+        const wanted = new Date(Date.UTC(year, month - 1, day, hour, minute));
+        guess = new Date(guess.getTime() + (wanted - asIfUtc));
+      }
+      return guess;
+    }
+
+    function zoneOffsetMinutes(date, zone) {
+      const shown = partsInZone(date, zone);
+      return (new Date(`${shown}:00Z`) - date) / 60000;
+    }
+
+    function matchPlaceToZone(value) {
+      const normalized = value.trim().toLowerCase();
+      if (!normalized) return "";
+      const tokens = normalized.match(/[a-z]{2,5}/g) || [];
+      const exact = places.find(([name]) => name.toLowerCase() === normalized);
+      const abbreviation = places.find(([name]) => tokens.includes(name.toLowerCase()));
+      const fuzzy = places.find(([name]) => name.toLowerCase().includes(normalized) || normalized.includes(name.toLowerCase()));
+      return (exact || abbreviation || fuzzy || [null, ""])[1];
+    }
+
+    function selectedTimeOwner() {
+      return document.querySelector('input[name="timeOwner"]:checked').value;
+    }
+
+    function inputZone() {
+      return selectedTimeOwner() === "target" ? $("targetZone").value : $("sourceZone").value;
+    }
+
+    function updateDateTimeCopy() {
+      const targetMode = selectedTimeOwner() === "target";
+      $("dateTimeLabel").textContent = targetMode ? "對方公告的日期時間" : "我的日期時間";
+      $("dateTimeHint").textContent = targetMode
+        ? "例如研習公告寫 9:00 AM PDT，就選 PDT/目的地時區，並輸入公告上的日期時間。"
+        : "如果你拿到的是對方公告時間，請切換成「對方公告時間」。";
+    }
+
+    function googleDate(date) {
+      return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+    }
+
+    function escapeIcs(text) {
+      return String(text || "").replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
+    }
+
+    function currentEvent() {
+      if (!$("sourceDateTime").value) return null;
+      const start = zonedTimeToUtc($("sourceDateTime").value, inputZone());
+      const end = new Date(start.getTime() + Number($("duration").value) * 60000);
+      const title = $("eventTitle").value.trim() || "線上研習";
+      const link = $("videoUrl").value.trim();
+      const reminder = Number($("reminder").value);
+      const body = [
+        `我的時間：${formatInZone(start, $("sourceZone").value, { dateStyle: "full", timeStyle: "short" })}`,
+        `目的地時間：${formatInZone(start, $("targetZone").value, { dateStyle: "full", timeStyle: "short" })}`,
+        `提醒：請至少提早 ${reminder} 分鐘準備。`,
+        link ? `視訊連結：${link}` : "",
+        $("notes").value.trim()
+      ].filter(Boolean).join("\n");
+      return { start, end, title, link, reminder, body };
+    }
+
+    function update() {
+      const sourceZone = $("sourceZone").value;
+      const targetZone = $("targetZone").value;
+      $("sourceStatus").textContent = sourceZone;
+      $("targetStatus").textContent = targetZone;
+      updateDateTimeCopy();
+
+      if (!$("sourceDateTime").value) return;
+
+      const instant = zonedTimeToUtc($("sourceDateTime").value, inputZone());
+      $("sourceTime").textContent = formatInZone(instant, sourceZone, { hour: "2-digit", minute: "2-digit", hour12: false });
+      $("sourceDate").textContent = formatInZone(instant, sourceZone, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+      $("targetTime").textContent = formatInZone(instant, targetZone, { hour: "2-digit", minute: "2-digit", hour12: false });
+      $("targetDate").textContent = formatInZone(instant, targetZone, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+
+      const diffMinutes = Math.round(zoneOffsetMinutes(instant, targetZone) - zoneOffsetMinutes(instant, sourceZone));
+      const sign = diffMinutes >= 0 ? "+" : "-";
+      const absMinutes = Math.abs(diffMinutes);
+      const hours = Math.floor(absMinutes / 60);
+      const minutes = absMinutes % 60;
+      $("offsetText").textContent = minutes ? `${sign}${hours}小時${minutes}分` : `${sign}${hours} 小時`;
+
+      const sourceDay = formatInZone(instant, sourceZone, { day: "numeric" });
+      const targetDay = formatInZone(instant, targetZone, { day: "numeric" });
+      $("dayHint").textContent = sourceDay === targetDay ? "同一天" : "目的地日期不同，請留意跨日";
+
+      const event = currentEvent();
+      if (!event) return;
+      const params = new URLSearchParams({
+        action: "TEMPLATE",
+        text: event.title,
+        dates: `${googleDate(event.start)}/${googleDate(event.end)}`,
+        details: event.body,
+        location: event.link || "Online",
+        ctz: sourceZone
+      });
+      $("googleLink").href = `https://calendar.google.com/calendar/render?${params.toString()}`;
+      $("eventSummary").textContent = `${event.title}｜${formatInZone(event.start, sourceZone, { dateStyle: "medium", timeStyle: "short" })}（我） / ${formatInZone(event.start, targetZone, { dateStyle: "medium", timeStyle: "short" })}（目的地）｜提醒 ${event.reminder} 分鐘前`;
+    }
+
+    function downloadIcs() {
+      const event = currentEvent();
+      if (!event) return;
+      const uid = `${Date.now()}@friendly-timezone`;
+      const ics = [
+        "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Friendly Timezone//ZH-Hant//EN",
+        "BEGIN:VEVENT", `UID:${uid}`, `DTSTAMP:${googleDate(new Date())}`,
+        `DTSTART:${googleDate(event.start)}`, `DTEND:${googleDate(event.end)}`,
+        `SUMMARY:${escapeIcs(event.title)}`, `DESCRIPTION:${escapeIcs(event.body)}`,
+        `LOCATION:${escapeIcs(event.link || "Online")}`,
+        "BEGIN:VALARM", `TRIGGER:-PT${event.reminder}M`, "ACTION:DISPLAY",
+        `DESCRIPTION:${escapeIcs(event.title)}`, "END:VALARM",
+        "END:VEVENT", "END:VCALENDAR"
+      ].join("\r\n");
+      const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${event.title.replace(/[\\/:*?"<>|]+/g, "-")}.ics`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    fillZones($("sourceZone"));
+    fillZones($("targetZone"));
+    $("sourceZone").value = zones.includes(deviceZone) ? deviceZone : "Asia/Taipei";
+    $("targetZone").value = "America/New_York";
+    $("sourceDateTime").value = partsInZone(new Date(Date.now() + 60 * 60 * 1000), $("sourceZone").value);
+    places.forEach(([name]) => {
+      const option = document.createElement("option");
+      option.value = name;
+      $("placeList").appendChild(option);
+    });
+
+    document.querySelectorAll(".tab").forEach((button) => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach((tab) => tab.setAttribute("aria-selected", String(tab === button)));
+        document.querySelectorAll(".panel").forEach((panel) => panel.classList.toggle("hidden", panel.id !== button.dataset.panel));
+      });
+    });
+
+    ["sourcePlace", "targetPlace"].forEach((id) => {
+      $(id).addEventListener("input", () => {
+        const zone = matchPlaceToZone($(id).value);
+        if (zone && zones.includes(zone)) $(id === "sourcePlace" ? "sourceZone" : "targetZone").value = zone;
+        update();
+      });
+    });
+
+    document.querySelectorAll("input, select, textarea").forEach((control) => control.addEventListener("input", update));
+    $("downloadIcs").addEventListener("click", downloadIcs);
+    $("copySummary").addEventListener("click", async () => {
+      const text = $("eventSummary").textContent;
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const temporary = document.createElement("textarea");
+        temporary.value = text;
+        document.body.appendChild(temporary);
+        temporary.select();
+        document.execCommand("copy");
+        temporary.remove();
+      }
+      $("copySummary").textContent = "已複製";
+      setTimeout(() => $("copySummary").textContent = "複製摘要", 1400);
+    });
+    update();
+  </script>
+</body>
+</html>
