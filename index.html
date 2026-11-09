@@ -3,23 +3,29 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>互動地球時區轉換器</title>
-  <meta name="description" content="輸入所在地、目的地與線上研習資訊，快速轉換時區並新增到 Google 日曆。">
+  <title>互動地球時區轉換器與教學系統</title>
+  <meta name="description" content="3D 真實地球與 2D 經度時區展開圖，支援夏令/冬令時間判斷、時區教學模式、雙向時間轉換與 Google 日曆匯出。">
+  <!-- 引入 D3.js 與 TopoJSON 用於繪製真實世界地圖與正射投影 3D 地球 -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
   <style>
     :root {
       color-scheme: light;
-      --ink: #17202a;
-      --muted: #657080;
-      --line: #d8e1e8;
-      --paper: #fbfcf8;
+      --ink: #0f172a;
+      --muted: #475569;
+      --line: #cbd5e1;
+      --paper: #f8fafc;
       --panel: #ffffff;
-      --sea: #83c9de;
-      --land: #82c98b;
-      --sun: #f4c64e;
-      --coral: #ff7d6e;
-      --teal: #167d8a;
-      --shadow: 0 18px 45px rgba(35, 52, 67, .14);
-      font-family: "Segoe UI", "Noto Sans TC", system-ui, sans-serif;
+      --sea: #1e40af;
+      --sea-light: #3b82f6;
+      --land: #10b981;
+      --land-stroke: #059669;
+      --sun: #f59e0b;
+      --coral: #ef4444;
+      --teal: #0d9488;
+      --indigo: #4f46e5;
+      --shadow: 0 14px 35px rgba(15, 23, 42, .1);
+      font-family: "Segoe UI", "Noto Sans TC", system-ui, -apple-system, sans-serif;
     }
 
     * { box-sizing: border-box; }
@@ -28,168 +34,261 @@
       margin: 0;
       min-height: 100vh;
       background:
-        radial-gradient(circle at top left, rgba(244, 198, 78, .28), transparent 34rem),
-        linear-gradient(135deg, #f8fbff 0%, var(--paper) 46%, #eef9f6 100%);
+        radial-gradient(circle at top left, rgba(245, 158, 11, .16), transparent 36rem),
+        linear-gradient(135deg, #f0f9ff 0%, var(--paper) 50%, #ecfdf5 100%);
       color: var(--ink);
     }
 
     main {
-      width: min(1180px, calc(100% - 28px));
+      width: min(1360px, calc(100% - 28px));
       margin: 0 auto;
-      padding: 22px 0 30px;
+      padding: 18px 0 36px;
+      display: grid;
+      gap: 20px;
     }
 
     .app {
       display: grid;
-      grid-template-columns: minmax(280px, 420px) 1fr;
+      grid-template-columns: minmax(360px, 540px) 1fr;
       gap: 18px;
       align-items: stretch;
-      min-height: calc(100vh - 52px);
     }
 
     .hero {
       position: relative;
-      overflow: hidden;
       border: 1px solid var(--line);
-      border-radius: 8px;
-      background: linear-gradient(180deg, #fdfefe, #eaf7fa);
+      border-radius: 14px;
+      background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+      color: #f8fafc;
       box-shadow: var(--shadow);
-      padding: 22px;
+      padding: 20px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      min-height: 590px;
+      overflow: hidden;
+    }
+
+    .hero-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      z-index: 2;
     }
 
     h1 {
       margin: 0;
-      font-size: clamp(2rem, 4.8vw, 4.4rem);
-      line-height: .98;
-      letter-spacing: 0;
-      max-width: 10ch;
+      font-size: clamp(1.6rem, 2.8vw, 2.25rem);
+      line-height: 1.15;
+      color: #fff;
     }
 
     .intro {
-      margin: 14px 0 0;
-      color: var(--muted);
-      font-size: 1rem;
-      line-height: 1.65;
-      max-width: 32rem;
+      margin: 8px 0 0;
+      color: #94a3b8;
+      font-size: .92rem;
+      line-height: 1.5;
+    }
+
+    .view-switch {
+      display: inline-flex;
+      background: rgba(255, 255, 255, .1);
+      border: 1px solid rgba(255, 255, 255, .2);
+      border-radius: 8px;
+      padding: 3px;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    .view-btn {
+      border: 0;
+      background: transparent;
+      color: #cbd5e1;
+      font: inherit;
+      font-size: .8rem;
+      font-weight: 700;
+      padding: 6px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: .15s;
+    }
+
+    .view-btn.active {
+      background: #38bdf8;
+      color: #0f172a;
     }
 
     .globe-wrap {
       position: relative;
       display: grid;
       place-items: center;
-      min-height: 315px;
-      margin-top: 18px;
+      min-height: 380px;
+      margin: 10px 0;
+      user-select: none;
     }
 
-    .globe {
-      position: relative;
-      width: min(76vw, 300px);
+    #globeCanvas {
+      width: 100%;
+      max-width: 480px;
+      height: auto;
       aspect-ratio: 1;
+      cursor: grab;
+      display: block;
+    }
+
+    #globeCanvas:active {
+      cursor: grabbing;
+    }
+
+    .globe-controls {
+      position: absolute;
+      bottom: 8px;
+      left: 8px;
+      right: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      pointer-events: none;
+      font-size: .78rem;
+      color: #cbd5e1;
+    }
+
+    .globe-controls .pill {
+      pointer-events: auto;
+      background: rgba(15, 23, 42, .78);
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(255, 255, 255, .18);
+      padding: 5px 10px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .globe-controls button {
+      pointer-events: auto;
+      background: rgba(15, 23, 42, .85);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, .4);
+      padding: 5px 10px;
+      border-radius: 999px;
+      font: inherit;
+      font-size: .78rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .globe-controls button:hover {
+      background: rgba(56, 189, 248, .2);
+    }
+
+    .legend-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: .8rem;
+      color: #cbd5e1;
+      margin-bottom: 10px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .06);
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 11px;
+      height: 11px;
       border-radius: 50%;
-      background:
-        radial-gradient(circle at 32% 26%, rgba(255, 255, 255, .75), transparent 16%),
-        radial-gradient(circle at 50% 50%, var(--sea), #48a9c5);
-      border: 5px solid #fff;
-      box-shadow: inset -22px -26px 0 rgba(29, 96, 124, .18), 0 18px 36px rgba(28, 80, 98, .2);
-      animation: float 5s ease-in-out infinite;
+      display: inline-block;
     }
 
-    .globe::before,
-    .globe::after,
-    .continent {
-      content: "";
-      position: absolute;
-      background: var(--land);
-      border: 3px solid rgba(255, 255, 255, .72);
-      border-radius: 46% 54% 54% 46% / 48% 35% 65% 52%;
-    }
-
-    .globe::before {
-      width: 42%;
-      height: 34%;
-      left: 18%;
-      top: 28%;
-      transform: rotate(-20deg);
-    }
-
-    .globe::after {
-      width: 34%;
-      height: 42%;
-      right: 15%;
-      top: 20%;
-      transform: rotate(24deg);
-    }
-
-    .continent {
-      width: 30%;
-      height: 20%;
-      right: 22%;
-      bottom: 18%;
-      transform: rotate(-9deg);
-    }
-
-    .route {
-      position: absolute;
-      width: min(82vw, 340px);
-      height: min(82vw, 340px);
-      border: 2px dashed rgba(22, 125, 138, .5);
-      border-radius: 50%;
-      animation: spin 16s linear infinite;
-    }
-
-    .pin {
-      position: absolute;
-      display: grid;
-      place-items: center;
-      width: 44px;
-      height: 44px;
-      border-radius: 50% 50% 50% 8px;
-      background: var(--coral);
-      color: #fff;
-      font-weight: 800;
-      box-shadow: 0 12px 22px rgba(255, 125, 110, .28);
-    }
-
-    .pin.start { left: 20%; top: 29%; transform: rotate(-45deg); }
-    .pin.end { right: 14%; bottom: 24%; transform: rotate(-45deg); background: var(--teal); }
-    .pin span { transform: rotate(45deg); }
+    .dot.source { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+    .dot.target { background: #06b6d4; box-shadow: 0 0 8px #06b6d4; }
+    .dot.teach { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
 
     .status-strip {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 10px;
-      margin-top: 18px;
     }
 
     .status {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: rgba(255, 255, 255, .76);
-      padding: 12px;
+      border: 1px solid rgba(255, 255, 255, .15);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, .07);
+      padding: 11px 13px;
+    }
+
+    .status.source-card { border-left: 4px solid #ef4444; }
+    .status.target-card { border-left: 4px solid #06b6d4; }
+
+    .status-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
     }
 
     .status b {
-      display: block;
       font-size: .78rem;
-      color: var(--muted);
-      margin-bottom: 5px;
+      color: #94a3b8;
     }
 
-    .status span {
+    .dst-badge {
+      font-size: .72rem;
       font-weight: 800;
+      padding: 2px 7px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .dst-summer {
+      background: rgba(245, 158, 11, .22);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, .45);
+    }
+
+    .dst-winter {
+      background: rgba(56, 189, 248, .2);
+      color: #7dd3fc;
+      border: 1px solid rgba(56, 189, 248, .4);
+    }
+
+    .dst-none {
+      background: rgba(148, 163, 184, .2);
+      color: #cbd5e1;
+      border: 1px solid rgba(148, 163, 184, .35);
+    }
+
+    .status .zone-title {
+      font-weight: 800;
+      font-size: .95rem;
+      color: #fff;
+      display: block;
       word-break: break-word;
+    }
+
+    .status .zone-sub {
+      font-size: .78rem;
+      color: #cbd5e1;
+      margin-top: 3px;
+      display: block;
     }
 
     .workspace {
       border: 1px solid var(--line);
-      border-radius: 8px;
-      background: rgba(255, 255, 255, .9);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, .95);
       box-shadow: var(--shadow);
-      padding: 16px;
+      padding: 18px;
       display: grid;
       grid-template-rows: auto auto 1fr;
       gap: 14px;
@@ -208,10 +307,12 @@
       background: #fff;
       color: var(--ink);
       border-radius: 8px;
-      padding: 10px 12px;
+      padding: 9px 14px;
       font: inherit;
-      font-weight: 700;
+      font-weight: 800;
+      font-size: .9rem;
       cursor: pointer;
+      transition: .15s;
     }
 
     .tab[aria-selected="true"] {
@@ -233,9 +334,24 @@
     }
 
     label {
-      font-size: .88rem;
+      font-size: .86rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+
+    .tag-pin {
+      font-size: .74rem;
+      padding: 1px 7px;
+      border-radius: 99px;
+      color: #fff;
       font-weight: 800;
     }
+
+    .tag-pin.me { background: #ef4444; }
+    .tag-pin.go { background: #0891b2; }
 
     input,
     select,
@@ -246,12 +362,12 @@
       background: #fff;
       color: var(--ink);
       font: inherit;
-      padding: 11px 12px;
-      min-height: 46px;
+      padding: 10px 12px;
+      min-height: 44px;
     }
 
     textarea {
-      min-height: 88px;
+      min-height: 82px;
       resize: vertical;
       line-height: 1.45;
     }
@@ -260,7 +376,7 @@
     select:focus,
     textarea:focus,
     button:focus-visible {
-      outline: 3px solid rgba(22, 125, 138, .24);
+      outline: 3px solid rgba(13, 148, 136, .24);
       outline-offset: 2px;
     }
 
@@ -268,7 +384,7 @@
 
     .hint {
       color: var(--muted);
-      font-size: .82rem;
+      font-size: .8rem;
       line-height: 1.35;
     }
 
@@ -282,19 +398,90 @@
       border: 1px solid var(--line);
       border-radius: 8px;
       background: #fff;
-      padding: 11px 12px;
+      padding: 10px 12px;
       display: flex;
       align-items: center;
       gap: 8px;
       font-weight: 800;
       cursor: pointer;
-      min-height: 46px;
+      min-height: 44px;
+    }
+
+    .choice input {
+      width: auto;
+      min-height: auto;
+      margin: 0;
     }
 
     .choice:has(input:checked) {
       border-color: var(--teal);
-      background: #edf8f8;
-      color: #0b6772;
+      background: #f0fdfa;
+      color: #0f766e;
+    }
+
+    .season-box {
+      border: 1px solid #bae6fd;
+      background: linear-gradient(135deg, #f0f9ff 0%, #fffbeb 100%);
+      border-radius: 10px;
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .season-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .season-header strong {
+      font-size: .88rem;
+      color: #0369a1;
+    }
+
+    .season-btns {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .mini-btn {
+      border: 1px solid #94a3b8;
+      background: #fff;
+      color: var(--ink);
+      border-radius: 6px;
+      padding: 5px 10px;
+      font: inherit;
+      font-size: .78rem;
+      font-weight: 800;
+      cursor: pointer;
+      transition: .15s;
+    }
+
+    .mini-btn:hover {
+      border-color: var(--teal);
+      color: var(--teal);
+    }
+
+    .mini-btn.summer-btn {
+      border-color: #f59e0b;
+      background: #fffbeb;
+      color: #b45309;
+    }
+
+    .mini-btn.winter-btn {
+      border-color: #0284c7;
+      background: #f0f9ff;
+      color: #0369a1;
+    }
+
+    .season-explain {
+      font-size: .81rem;
+      color: #334155;
+      line-height: 1.45;
+      margin: 0;
     }
 
     .results {
@@ -304,30 +491,42 @@
     }
 
     .result {
-      min-height: 118px;
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 10px;
       padding: 13px;
-      background: #f9fcfd;
+      background: #f8fafc;
+      position: relative;
+    }
+
+    .result.me-result { border-top: 4px solid #ef4444; }
+    .result.go-result { border-top: 4px solid #06b6d4; }
+    .result.diff-result { border-top: 4px solid #8b5cf6; }
+
+    .result-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
     }
 
     .result h2 {
-      margin: 0 0 10px;
-      font-size: .9rem;
+      margin: 0;
+      font-size: .86rem;
       color: var(--muted);
     }
 
     .time {
       display: block;
-      font-size: clamp(1.28rem, 3vw, 2rem);
+      font-size: clamp(1.35rem, 2.5vw, 1.95rem);
       font-weight: 900;
       line-height: 1.05;
-      word-break: break-word;
     }
 
     .date {
       display: block;
-      margin-top: 8px;
+      margin-top: 6px;
+      font-size: .82rem;
       color: var(--muted);
       line-height: 1.35;
     }
@@ -342,12 +541,13 @@
     .button {
       border: 0;
       border-radius: 8px;
-      min-height: 46px;
-      padding: 11px 14px;
+      min-height: 44px;
+      padding: 10px 14px;
       color: #fff;
       background: var(--teal);
       font: inherit;
       font-weight: 850;
+      font-size: .9rem;
       cursor: pointer;
       text-decoration: none;
       display: inline-flex;
@@ -358,7 +558,7 @@
 
     .button.secondary {
       background: var(--sun);
-      color: #30260b;
+      color: #fff;
     }
 
     .button.ghost {
@@ -371,36 +571,213 @@
       border: 1px solid var(--line);
       border-radius: 8px;
       background: #fff;
-      padding: 12px;
+      padding: 11px 13px;
       color: var(--muted);
-      line-height: 1.55;
-      min-height: 72px;
+      font-size: .88rem;
+      line-height: 1.5;
+      margin: 10px 0;
+    }
+
+    .teaching-board {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, .96);
+      box-shadow: var(--shadow);
+      padding: 20px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .teaching-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 12px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 12px;
+    }
+
+    .teaching-header h2 {
+      margin: 0;
+      font-size: 1.35rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .teaching-header p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: .9rem;
+    }
+
+    .teaching-concepts {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .concept-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+
+    .concept-card h3 {
+      margin: 0 0 6px;
+      font-size: .92rem;
+      color: #0f172a;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .concept-card p {
+      margin: 0;
+      font-size: .82rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .tz-strip-wrapper {
+      overflow-x: auto;
+      padding-bottom: 8px;
+    }
+
+    .tz-strip {
+      display: grid;
+      grid-template-columns: repeat(25, minmax(66px, 1fr));
+      gap: 6px;
+      min-width: 1150px;
+    }
+
+    .tz-Band {
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 8px 5px;
+      text-align: center;
+      background: #fff;
+      cursor: pointer;
+      transition: all .15s ease;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 112px;
+      position: relative;
+    }
+
+    .tz-Band:hover {
+      transform: translateY(-3px);
+      border-color: #0f172a;
+      box-shadow: 0 6px 14px rgba(15, 23, 42, .1);
+    }
+
+    .tz-Band.day-cell {
+      background: linear-gradient(180deg, #fffbeb 0%, #ffffff 100%);
+    }
+
+    .tz-Band.night-cell {
+      background: linear-gradient(180deg, #1e293b 0%, #334155 100%);
+      color: #f8fafc;
+      border-color: #475569;
+    }
+
+    .tz-Band.is-source {
+      outline: 3px solid #ef4444;
+      z-index: 2;
+    }
+
+    .tz-Band.is-target {
+      outline: 3px solid #06b6d4;
+      z-index: 2;
+    }
+
+    .tz-Band.is-teaching {
+      outline: 3px solid #f59e0b;
+      z-index: 3;
+      transform: translateY(-4px);
+    }
+
+    .tz-offset {
+      font-size: .74rem;
+      font-weight: 900;
+      letter-spacing: -.02em;
+    }
+
+    .tz-lon {
+      font-size: .68rem;
+      opacity: .75;
+    }
+
+    .tz-clock {
+      font-size: .95rem;
+      font-weight: 900;
+      margin: 4px 0;
+    }
+
+    .tz-city {
+      font-size: .7rem;
+      line-height: 1.2;
+      opacity: .9;
+      word-break: keep-all;
+    }
+
+    .tz-marker-pills {
+      display: flex;
+      gap: 2px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 3px;
+    }
+
+    .tz-pill {
+      font-size: .62rem;
+      font-weight: 800;
+      padding: 1px 4px;
+      border-radius: 4px;
+      color: #fff;
+    }
+
+    .tz-pill.me { background: #ef4444; }
+    .tz-pill.go { background: #06b6d4; }
+    .tz-pill.teach { background: #f59e0b; color: #0f172a; }
+
+    .teaching-detail-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      background: #f1f5f9;
+      border-radius: 10px;
+      padding: 12px 16px;
+      border-left: 5px solid #f59e0b;
+    }
+
+    .teaching-detail-text {
+      font-size: .9rem;
+      line-height: 1.5;
+    }
+
+    .teaching-detail-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
     }
 
     .hidden { display: none; }
 
-    @keyframes float {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-8px); }
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
-    @media (max-width: 920px) {
+    @media (max-width: 1024px) {
       .app { grid-template-columns: 1fr; }
-      .hero { min-height: auto; }
-      .results { grid-template-columns: 1fr; }
+      .teaching-concepts { grid-template-columns: 1fr; }
     }
 
     @media (max-width: 640px) {
-      main { width: min(100% - 18px, 1180px); padding: 9px 0 18px; }
-      .hero, .workspace { padding: 14px; }
-      .grid, .status-strip { grid-template-columns: 1fr; }
-      .tab { flex: 1; padding-inline: 8px; }
-      .globe-wrap { min-height: 250px; }
-      .pin { width: 38px; height: 38px; }
+      main { width: min(100% - 18px, 1360px); padding: 10px 0 24px; }
+      .hero, .workspace, .teaching-board { padding: 14px; }
+      .grid, .status-strip, .results { grid-template-columns: 1fr; }
       .actions .button { width: 100%; }
     }
   </style>
@@ -408,69 +785,123 @@
 <body>
   <main>
     <section class="app" aria-label="互動地球時區轉換器">
+      <!-- 左側：真實世界地球儀與時區標記 -->
       <aside class="hero">
-        <div>
-          <h1>地球另一端，時間不再猜。</h1>
-          <p class="intro">輸入所在地、目的地與研習時間，立刻換算成雙方時區，並整理成可加入 Google 日曆的線上活動。</p>
+        <div class="hero-header">
+          <div>
+            <h1>真實地球・時區教學儀</h1>
+            <p class="intro">拖曳旋轉真實地球，清楚觀察「我的時區」、「待轉換時區」、經線分區與晝夜晨昏線。</p>
+          </div>
+          <div class="view-switch" role="group" aria-label="地球檢視模式">
+            <button type="button" class="view-btn active" id="view3D">3D 地球儀</button>
+            <button type="button" class="view-btn" id="view2D">2D 世界全圖</button>
+          </div>
         </div>
 
-        <div class="globe-wrap" aria-hidden="true">
-          <div class="route"></div>
-          <div class="globe"><i class="continent"></i></div>
-          <div class="pin start"><span>我</span></div>
-          <div class="pin end"><span>去</span></div>
+        <div class="globe-wrap">
+          <canvas id="globeCanvas" width="520" height="520" aria-label="互動式真實地球與時區標示"></canvas>
+          <div class="globe-controls">
+            <span class="pill" id="globeHint">🖱️ 拖曳旋轉地球｜點擊下方時區帶可定位</span>
+            <div style="display:flex; gap:6px;">
+              <button type="button" id="focusSourceBtn">定位「我」</button>
+              <button type="button" id="focusTargetBtn">定位「待轉換」</button>
+              <button type="button" id="toggleBandsBtn">時區色帶：開</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="legend-bar">
+          <span class="legend-item"><i class="dot source"></i> 我的時區（起點）</span>
+          <span class="legend-item"><i class="dot target"></i> 待轉換時區（目的地）</span>
+          <span class="legend-item"><i class="dot teach"></i> 教學選取時區帶</span>
+          <span class="legend-item">☀️ 晝夜陰影隨所選時間變化</span>
         </div>
 
         <div class="status-strip" aria-live="polite">
-          <div class="status">
-            <b>所在地</b>
-            <span id="sourceStatus">Asia/Taipei</span>
+          <div class="status source-card">
+            <div class="status-top">
+              <b>📍 我的時區</b>
+              <span class="dst-badge dst-none" id="sourceDstBadge">標準時間</span>
+            </div>
+            <span class="zone-title" id="sourceStatus">Asia/Taipei</span>
+            <span class="zone-sub" id="sourceOffsetInfo">UTC+8 (東經 120°)</span>
           </div>
-          <div class="status">
-            <b>目的地</b>
-            <span id="targetStatus">America/New_York</span>
+          <div class="status target-card">
+            <div class="status-top">
+              <b>🎯 待轉換時區</b>
+              <span class="dst-badge dst-summer" id="targetDstBadge">夏令時間</span>
+            </div>
+            <span class="zone-title" id="targetStatus">America/New_York</span>
+            <span class="zone-sub" id="targetOffsetInfo">UTC-4 / UTC-5</span>
           </div>
         </div>
       </aside>
 
+      <!-- 右側：轉換控制與夏令/冬令時間面板 -->
       <section class="workspace">
         <nav class="tabs" aria-label="工具分頁">
-          <button class="tab" type="button" aria-selected="true" data-panel="convert">時區轉換</button>
-          <button class="tab" type="button" aria-selected="false" data-panel="event">研習資訊</button>
+          <button class="tab" type="button" aria-selected="true" data-panel="convert">1. 時區轉換與冬/夏令設定</button>
+          <button class="tab" type="button" aria-selected="false" data-panel="event">2. 線上研習與日曆提醒</button>
         </nav>
 
-        <form id="toolForm">
+        <form id="toolForm" onsubmit="return false;">
           <section id="convert" class="panel">
             <div class="grid">
               <div class="field">
-                <label for="sourcePlace">我的所在地</label>
-                <input id="sourcePlace" list="placeList" value="Taipei" autocomplete="off">
-                <span class="hint">可輸入城市、PDT/EDT 等縮寫，或直接選時區。</span>
+                <label for="sourcePlace">
+                  <span>我的所在地 / 城市</span>
+                  <span class="tag-pin me">地球紅點：我</span>
+                </label>
+                <input id="sourcePlace" list="placeList" value="Taipei (台北)" autocomplete="off">
+                <span class="hint">可輸入城市中英文、PDT/EDT 等縮寫，或從右側選單挑選。</span>
               </div>
               <div class="field">
-                <label for="sourceZone">我的時區</label>
+                <label for="sourceZone">我的時區 (IANA)</label>
                 <select id="sourceZone"></select>
               </div>
+
               <div class="field">
-                <label for="targetPlace">目的地</label>
-                <input id="targetPlace" list="placeList" value="New York" autocomplete="off">
-                <span class="hint">例如 Tokyo、London、Los Angeles，也可輸入 PDT。</span>
+                <label for="targetPlace">
+                  <span>待轉換地 / 城市</span>
+                  <span class="tag-pin go">地球藍點：待轉換</span>
+                </label>
+                <input id="targetPlace" list="placeList" value="New York (紐約)" autocomplete="off">
+                <span class="hint">例如 Tokyo、London、Los Angeles、Sydney。</span>
               </div>
               <div class="field">
-                <label for="targetZone">目的地時區</label>
+                <label for="targetZone">待轉換時區 (IANA)</label>
                 <select id="targetZone"></select>
               </div>
+
               <div class="field wide">
                 <label>這個日期時間是誰的？</label>
                 <div class="choice-row" role="radiogroup" aria-label="日期時間來源">
-                  <label class="choice"><input type="radio" name="timeOwner" value="source" checked> 我的時間</label>
-                  <label class="choice"><input type="radio" name="timeOwner" value="target"> 對方公告時間</label>
+                  <label class="choice"><input type="radio" name="timeOwner" value="source" checked> 我的所在地時間</label>
+                  <label class="choice"><input type="radio" name="timeOwner" value="target"> 對方（待轉換時區）公告時間</label>
                 </div>
               </div>
+
               <div class="field wide">
-                <label for="sourceDateTime" id="dateTimeLabel">我的日期時間</label>
+                <label for="sourceDateTime" id="dateTimeLabel">指定日期與時間</label>
                 <input id="sourceDateTime" type="datetime-local">
-                <span class="hint" id="dateTimeHint">如果你拿到的是對方公告時間，請切換成「對方公告時間」。</span>
+                <span class="hint" id="dateTimeHint">調整時間會即時轉動地球的太陽照射角度（晝夜分佈）與冬/夏令狀態。</span>
+              </div>
+
+              <!-- 冬令時間與夏令時間教學及切換盒 -->
+              <div class="field wide">
+                <div class="season-box">
+                  <div class="season-header">
+                    <strong>☀️❄️ 夏令時間 (DST) 與 冬令時間 (標準時間) 教學切換</strong>
+                    <div class="season-btns">
+                      <button type="button" class="mini-btn summer-btn" id="jumpSummerBtn">☀️ 切換至夏令時間範例 (7月)</button>
+                      <button type="button" class="mini-btn winter-btn" id="jumpWinterBtn">❄️ 切換至冬令時間範例 (1月)</button>
+                      <button type="button" class="mini-btn" id="jumpNowBtn">⏱️ 回到現在時間</button>
+                    </div>
+                  </div>
+                  <p class="season-explain" id="dstComparisonText">
+                    正在載入夏令與冬令時間差異分析...
+                  </p>
+                </div>
               </div>
             </div>
           </section>
@@ -478,11 +909,11 @@
           <section id="event" class="panel hidden">
             <div class="grid">
               <div class="field wide">
-                <label for="eventTitle">線上研習名稱</label>
-                <input id="eventTitle" value="線上研習">
+                <label for="eventTitle">線上研習 / 跨國會議名稱</label>
+                <input id="eventTitle" value="跨時區線上研習">
               </div>
               <div class="field">
-                <label for="duration">研習長度</label>
+                <label for="duration">活動長度</label>
                 <select id="duration">
                   <option value="30">30 分鐘</option>
                   <option value="60" selected>1 小時</option>
@@ -492,7 +923,7 @@
                 </select>
               </div>
               <div class="field">
-                <label for="reminder">提醒我</label>
+                <label for="reminder">日曆提醒</label>
                 <select id="reminder">
                   <option value="10">10 分鐘前</option>
                   <option value="15" selected>15 分鐘前</option>
@@ -515,72 +946,164 @@
 
         <section aria-label="轉換結果">
           <div class="results">
-            <article class="result">
-              <h2>我的時間</h2>
+            <article class="result me-result">
+              <div class="result-head">
+                <h2>📍 我的時間</h2>
+                <span class="dst-badge dst-none" id="resSourceDst">--</span>
+              </div>
               <span class="time" id="sourceTime">--:--</span>
               <span class="date" id="sourceDate">請輸入時間</span>
             </article>
-            <article class="result">
-              <h2>目的地時間</h2>
+            <article class="result go-result">
+              <div class="result-head">
+                <h2>🎯 待轉換時區時間</h2>
+                <span class="dst-badge dst-none" id="resTargetDst">--</span>
+              </div>
               <span class="time" id="targetTime">--:--</span>
               <span class="date" id="targetDate">請輸入時間</span>
             </article>
-            <article class="result">
-              <h2>時間差</h2>
+            <article class="result diff-result">
+              <div class="result-head">
+                <h2>⚖️ 雙方時差與經度差</h2>
+              </div>
               <span class="time" id="offsetText">--</span>
-              <span class="date" id="dayHint">自動判斷跨日</span>
+              <span class="date" id="dayHint">自動判斷跨日與冬夏令影響</span>
             </article>
           </div>
 
           <p class="summary" id="eventSummary">填好時間後，這裡會整理可加入日曆的研習摘要。</p>
 
           <div class="actions">
-            <a class="button" id="googleLink" href="#" target="_blank" rel="noopener">＋ Google 日曆</a>
-            <button class="button secondary" id="downloadIcs" type="button">下載提醒檔</button>
-            <button class="button ghost" id="copySummary" type="button">複製摘要</button>
+            <a class="button" id="googleLink" href="#" target="_blank" rel="noopener">＋ 加入 Google 日曆</a>
+            <button class="button secondary" id="downloadIcs" type="button">下載 .ics 提醒檔</button>
+            <button class="button ghost" id="copySummary" type="button">複製轉換摘要</button>
           </div>
         </section>
       </section>
+    </section>
+
+    <!-- 下方：24 時區全景教學面板 -->
+    <section class="teaching-board" aria-label="全球 24 時區教學互動區">
+      <div class="teaching-header">
+        <div>
+          <h2>🎓 全球 24 時區全景教學尺（點擊任一時區可在地球上高亮呈現）</h2>
+          <p>地球自西向東轉，每 <strong>15° 經度</strong> 劃分為一個時區（相差 1 小時）：往東時間 <strong>＋1 小時</strong>，往西時間 <strong>－1 小時</strong>。</p>
+        </div>
+        <div class="season-btns">
+          <button type="button" class="mini-btn" id="stepWestBtn">⬅️ 往西一個時區 (-1h / 15°W)</button>
+          <button type="button" class="mini-btn" id="stepEastBtn">➡️ 往東一個時區 (+1h / 15°E)</button>
+        </div>
+      </div>
+
+      <div class="teaching-concepts">
+        <div class="concept-card">
+          <h3>🧭 1. 經度與時區的關係</h3>
+          <p>地球一圈 360° 除以 24 小時 ＝ <strong>每小時轉動 15°</strong>。以通過英國格林威治的本初子午線（0°）為基準（UTC±0），東經為正（UTC+）、西經為負（UTC-）。</p>
+        </div>
+        <div class="concept-card">
+          <h3>☀️ 2. 什麼是夏令時間 (DST)？</h3>
+          <p>歐美與部分高緯度國家在夏季日照長時，會將時鐘<strong>撥快 1 小時</strong>（例如紐約由 UTC-5 變為 UTC-4），以節約照明能源。台灣與日本目前全年不實施夏令時間。</p>
+        </div>
+        <div class="concept-card">
+          <h3>❄️ 3. 什麼是冬令時間（標準時間）？</h3>
+          <p>進入秋冬季（通常為 10 月底或 11 月初），實施日光節約時間的地區會將時鐘<strong>撥回原本的標準時區</strong>（撥慢 1 小時），此時與台灣的時差會比夏天多出 1 小時！</p>
+        </div>
+      </div>
+
+      <div class="tz-strip-wrapper">
+        <div class="tz-strip" id="tzStrip" role="list" aria-label="UTC-12 到 UTC+12 時區列表"></div>
+      </div>
+
+      <div class="teaching-detail-bar" id="teachingDetailBar">
+        <div class="teaching-detail-text" id="teachingDetailText">
+          👆 點擊上方任一「UTC 時區格子」，地球儀會立刻旋轉至該經度並標示黃色光帶，方便在課堂上向學生示範時區切換！
+        </div>
+        <div class="teaching-detail-actions">
+          <button type="button" class="mini-btn" id="setTeachAsSourceBtn">設為「我的時區」</button>
+          <button type="button" class="mini-btn" id="setTeachAsTargetBtn">設為「待轉換時區」</button>
+        </div>
+      </div>
     </section>
   </main>
 
   <datalist id="placeList"></datalist>
 
   <script>
-    const places = [
-      ["Taipei", "Asia/Taipei"], ["Kaohsiung", "Asia/Taipei"], ["Tokyo", "Asia/Tokyo"],
-      ["Seoul", "Asia/Seoul"], ["Singapore", "Asia/Singapore"], ["Hong Kong", "Asia/Hong_Kong"],
-      ["Shanghai", "Asia/Shanghai"], ["Beijing", "Asia/Shanghai"], ["Bangkok", "Asia/Bangkok"],
-      ["Sydney", "Australia/Sydney"], ["Melbourne", "Australia/Melbourne"], ["Auckland", "Pacific/Auckland"],
-      ["London", "Europe/London"], ["Paris", "Europe/Paris"], ["Berlin", "Europe/Berlin"],
-      ["Rome", "Europe/Rome"], ["Madrid", "Europe/Madrid"], ["Amsterdam", "Europe/Amsterdam"],
-      ["New York", "America/New_York"], ["Boston", "America/New_York"], ["Washington DC", "America/New_York"],
-      ["Chicago", "America/Chicago"], ["Denver", "America/Denver"], ["Los Angeles", "America/Los_Angeles"],
-      ["San Francisco", "America/Los_Angeles"], ["Seattle", "America/Los_Angeles"], ["Vancouver", "America/Vancouver"],
-      ["Toronto", "America/Toronto"], ["Mexico City", "America/Mexico_City"], ["Sao Paulo", "America/Sao_Paulo"],
-      ["Dubai", "Asia/Dubai"], ["Mumbai", "Asia/Kolkata"], ["Delhi", "Asia/Kolkata"],
-      ["Johannesburg", "Africa/Johannesburg"], ["Cairo", "Africa/Cairo"],
-      ["PDT", "America/Los_Angeles"], ["Pacific Daylight Time", "America/Los_Angeles"],
-      ["PST", "America/Los_Angeles"], ["Pacific Standard Time", "America/Los_Angeles"],
-      ["EDT", "America/New_York"], ["Eastern Daylight Time", "America/New_York"],
-      ["EST", "America/New_York"], ["Eastern Standard Time", "America/New_York"],
-      ["CDT", "America/Chicago"], ["Central Daylight Time", "America/Chicago"],
-      ["CST (US Central)", "America/Chicago"], ["MDT", "America/Denver"],
-      ["MST", "America/Denver"], ["GMT", "Etc/GMT"], ["UTC", "Etc/UTC"],
-      ["BST", "Europe/London"], ["CET", "Europe/Paris"], ["CEST", "Europe/Paris"],
-      ["JST", "Asia/Tokyo"], ["KST", "Asia/Seoul"], ["SGT", "Asia/Singapore"]
+    const cityCatalog = [
+      { name: "Taipei (台北)", aliases: ["taipei", "台北", "臺北", "taiwan", "台灣"], zone: "Asia/Taipei", lat: 25.0330, lon: 121.5654 },
+      { name: "Kaohsiung (高雄)", aliases: ["kaohsiung", "高雄"], zone: "Asia/Taipei", lat: 22.6273, lon: 120.3014 },
+      { name: "Tokyo (東京)", aliases: ["tokyo", "東京", "jst", "japan", "日本"], zone: "Asia/Tokyo", lat: 35.6762, lon: 139.6503 },
+      { name: "Seoul (首爾)", aliases: ["seoul", "首爾", "kst", "korea", "韓國"], zone: "Asia/Seoul", lat: 37.5665, lon: 126.9780 },
+      { name: "Singapore (新加坡)", aliases: ["singapore", "新加坡", "sgt"], zone: "Asia/Singapore", lat: 1.3521, lon: 103.8198 },
+      { name: "Hong Kong (香港)", aliases: ["hong kong", "香港", "hkt"], zone: "Asia/Hong_Kong", lat: 22.3193, lon: 114.1694 },
+      { name: "Shanghai (上海)", aliases: ["shanghai", "上海", "beijing", "北京"], zone: "Asia/Shanghai", lat: 31.2304, lon: 121.4737 },
+      { name: "Bangkok (曼谷)", aliases: ["bangkok", "曼谷", "thailand", "泰國"], zone: "Asia/Bangkok", lat: 13.7563, lon: 100.5018 },
+      { name: "Jakarta (雅加達)", aliases: ["jakarta", "雅加達", "indonesia"], zone: "Asia/Jakarta", lat: -6.2088, lon: 106.8456 },
+      { name: "Dhaka (達卡)", aliases: ["dhaka", "達卡", "bangladesh"], zone: "Asia/Dhaka", lat: 23.8103, lon: 90.4125 },
+      { name: "Mumbai (孟買)", aliases: ["mumbai", "孟買", "delhi", "德里", "india", "印度", "ist"], zone: "Asia/Kolkata", lat: 19.0760, lon: 72.8777 },
+      { name: "Tashkent (塔什干)", aliases: ["tashkent", "塔什干", "karachi", "喀拉蚩"], zone: "Asia/Tashkent", lat: 41.2995, lon: 69.2401 },
+      { name: "Dubai (杜拜)", aliases: ["dubai", "杜拜", "uae"], zone: "Asia/Dubai", lat: 25.2048, lon: 55.2708 },
+      { name: "Moscow (莫斯科)", aliases: ["moscow", "莫斯科", "msk", "riyadh", "利雅德"], zone: "Europe/Moscow", lat: 55.7558, lon: 37.6173 },
+      { name: "Cairo (開羅)", aliases: ["cairo", "開羅", "athens", "雅典", "eet", "johannesburg", "約翰尼斯堡"], zone: "Africa/Cairo", lat: 30.0444, lon: 31.2357 },
+      { name: "Paris (巴黎)", aliases: ["paris", "巴黎", "cet", "cest", "rome", "羅馬", "madrid", "馬德里", "amsterdam"], zone: "Europe/Paris", lat: 48.8566, lon: 2.3522 },
+      { name: "Berlin (柏林)", aliases: ["berlin", "柏林", "germany", "德國"], zone: "Europe/Berlin", lat: 52.5200, lon: 13.4050 },
+      { name: "London (倫敦)", aliases: ["london", "倫敦", "gmt", "bst", "uk", "英國", "utc"], zone: "Europe/London", lat: 51.5074, lon: -0.1278 },
+      { name: "Azores (亞速群島)", aliases: ["azores", "亞速群島", "cape verde", "維德角"], zone: "Atlantic/Azores", lat: 37.7412, lon: -25.6756 },
+      { name: "South Georgia (南喬治亞)", aliases: ["south georgia", "南喬治亞"], zone: "Atlantic/South_Georgia", lat: -54.2811, lon: -36.5092 },
+      { name: "Sao Paulo (聖保羅)", aliases: ["sao paulo", "聖保羅", "buenos aires", "布宜諾斯艾利斯", "brazil", "巴西"], zone: "America/Sao_Paulo", lat: -23.5505, lon: -46.6333 },
+      { name: "Halifax (哈利法克斯)", aliases: ["halifax", "哈利法克斯", "santiago", "聖地牙哥", "ast", "adt"], zone: "America/Halifax", lat: 44.6488, lon: -63.5752 },
+      { name: "New York (紐約)", aliases: ["new york", "紐約", "edt", "est", "boston", "波士頓", "washington", "華盛頓", "toronto", "多倫多"], zone: "America/New_York", lat: 40.7128, lon: -74.0060 },
+      { name: "Chicago (芝加哥)", aliases: ["chicago", "芝加哥", "cdt", "cst", "mexico city", "墨西哥城"], zone: "America/Chicago", lat: 41.8781, lon: -87.6298 },
+      { name: "Denver (丹佛)", aliases: ["denver", "丹佛", "mdt", "mst"], zone: "America/Denver", lat: 39.7392, lon: -104.9903 },
+      { name: "Los Angeles (洛杉磯)", aliases: ["los angeles", "洛杉磯", "pdt", "pst", "san francisco", "舊金山", "seattle", "西雅圖", "vancouver", "溫哥華"], zone: "America/Los_Angeles", lat: 34.0522, lon: -118.2437 },
+      { name: "Anchorage (安克拉治)", aliases: ["anchorage", "安克拉治", "alaska", "阿拉斯加", "akst", "akdt"], zone: "America/Anchorage", lat: 61.2181, lon: -149.9003 },
+      { name: "Honolulu (檀香山/夏威夷)", aliases: ["honolulu", "檀香山", "hawaii", "夏威夷", "hst"], zone: "Pacific/Honolulu", lat: 21.3069, lon: -157.8583 },
+      { name: "Midway (中途島)", aliases: ["midway", "中途島", "samoa", "美屬薩摩亞"], zone: "Pacific/Midway", lat: 28.2072, lon: -177.3735 },
+      { name: "Baker Island (貝克島)", aliases: ["baker island", "貝克島", "utc-12"], zone: "Etc/GMT+12", lat: 0.1936, lon: -176.4769 },
+      { name: "Brisbane (布里斯本)", aliases: ["brisbane", "布里斯本", "guam", "關島"], zone: "Australia/Brisbane", lat: -27.4698, lon: 153.0251 },
+      { name: "Sydney (雪梨)", aliases: ["sydney", "雪梨", "melbourne", "墨爾本", "aest", "aedt"], zone: "Australia/Sydney", lat: -33.8688, lon: 151.2093 },
+      { name: "Noumea (努美阿)", aliases: ["noumea", "努美阿", "solomon", "索羅門"], zone: "Pacific/Noumea", lat: -22.2758, lon: 166.4580 },
+      { name: "Auckland (奧克蘭)", aliases: ["auckland", "奧克蘭", "new zealand", "紐西蘭", "nzst", "nzdt"], zone: "Pacific/Auckland", lat: -36.8485, lon: 174.7633 }
     ];
 
-    const fallbackZones = [
-      "Asia/Taipei", "Asia/Tokyo", "Asia/Seoul", "Asia/Singapore", "Asia/Hong_Kong", "Asia/Shanghai",
-      "Asia/Bangkok", "Asia/Dubai", "Asia/Kolkata", "Australia/Sydney", "Pacific/Auckland",
-      "Europe/London", "Europe/Paris", "Europe/Berlin", "America/New_York", "America/Chicago",
-      "America/Denver", "America/Los_Angeles", "America/Vancouver", "America/Toronto", "America/Sao_Paulo"
+    const teachingBands = [
+      { offset: -12, label: "UTC-12", city: "貝克島", zone: "Etc/GMT+12", place: "Baker Island (貝克島)" },
+      { offset: -11, label: "UTC-11", city: "中途島", zone: "Pacific/Midway", place: "Midway (中途島)" },
+      { offset: -10, label: "UTC-10", city: "夏威夷", zone: "Pacific/Honolulu", place: "Honolulu (檀香山/夏威夷)" },
+      { offset: -9,  label: "UTC-9",  city: "安克拉治", zone: "America/Anchorage", place: "Anchorage (安克拉治)" },
+      { offset: -8,  label: "UTC-8",  city: "洛杉磯", zone: "America/Los_Angeles", place: "Los Angeles (洛杉磯)" },
+      { offset: -7,  label: "UTC-7",  city: "丹佛", zone: "America/Denver", place: "Denver (丹佛)" },
+      { offset: -6,  label: "UTC-6",  city: "芝加哥", zone: "America/Chicago", place: "Chicago (芝加哥)" },
+      { offset: -5,  label: "UTC-5",  city: "紐約", zone: "America/New_York", place: "New York (紐約)" },
+      { offset: -4,  label: "UTC-4",  city: "哈利法克斯", zone: "America/Halifax", place: "Halifax (哈利法克斯)" },
+      { offset: -3,  label: "UTC-3",  city: "聖保羅", zone: "America/Sao_Paulo", place: "Sao Paulo (聖保羅)" },
+      { offset: -2,  label: "UTC-2",  city: "南喬治亞", zone: "Atlantic/South_Georgia", place: "South Georgia (南喬治亞)" },
+      { offset: -1,  label: "UTC-1",  city: "亞速群島", zone: "Atlantic/Azores", place: "Azores (亞速群島)" },
+      { offset: 0,   label: "UTC±0",  city: "倫敦", zone: "Europe/London", place: "London (倫敦)" },
+      { offset: 1,   label: "UTC+1",  city: "巴黎/柏林", zone: "Europe/Paris", place: "Paris (巴黎)" },
+      { offset: 2,   label: "UTC+2",  city: "開羅", zone: "Africa/Cairo", place: "Cairo (開羅)" },
+      { offset: 3,   label: "UTC+3",  city: "莫斯科", zone: "Europe/Moscow", place: "Moscow (莫斯科)" },
+      { offset: 4,   label: "UTC+4",  city: "杜拜", zone: "Asia/Dubai", place: "Dubai (杜拜)" },
+      { offset: 5,   label: "UTC+5",  city: "塔什干", zone: "Asia/Tashkent", place: "Tashkent (塔什干)" },
+      { offset: 6,   label: "UTC+6",  city: "達卡", zone: "Asia/Dhaka", place: "Dhaka (達卡)" },
+      { offset: 7,   label: "UTC+7",  city: "曼谷", zone: "Asia/Bangkok", place: "Bangkok (曼谷)" },
+      { offset: 8,   label: "UTC+8",  city: "台北/北京", zone: "Asia/Taipei", place: "Taipei (台北)" },
+      { offset: 9,   label: "UTC+9",  city: "東京/首爾", zone: "Asia/Tokyo", place: "Tokyo (東京)" },
+      { offset: 10,  label: "UTC+10", city: "雪梨", zone: "Australia/Sydney", place: "Sydney (雪梨)" },
+      { offset: 11,  label: "UTC+11", city: "努美阿", zone: "Pacific/Noumea", place: "Noumea (努美阿)" },
+      { offset: 12,  label: "UTC+12", city: "奧克蘭", zone: "Pacific/Auckland", place: "Auckland (奧克蘭)" }
     ];
 
+    const fallbackZones = cityCatalog.map(c => c.zone);
     const $ = (id) => document.getElementById(id);
-    const zones = Intl.supportedValuesOf ? Intl.supportedValuesOf("timeZone") : fallbackZones;
-    const deviceZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Taipei";
+    const zones = Intl.supportedValuesOf ? Intl.supportedValuesOf("timeZone") : [...new Set(fallbackZones)];
+
+    let worldLand = null;
+    let worldCountries = null;
+    let viewMode = "3D";
+    let showTimezoneBands = true;
+    let rotation = [-121.5, -20, 0];
+    let activeTeachingOffset = 8;
 
     function fillZones(select) {
       zones.forEach((zone) => {
@@ -622,17 +1145,72 @@
 
     function zoneOffsetMinutes(date, zone) {
       const shown = partsInZone(date, zone);
-      return (new Date(`${shown}:00Z`) - date) / 60000;
+      return Math.round((new Date(`${shown}:00Z`) - date) / 60000);
+    }
+
+    function formatUtcOffset(minutes) {
+      const sign = minutes >= 0 ? "+" : "-";
+      const abs = Math.abs(minutes);
+      const h = Math.floor(abs / 60);
+      const m = abs % 60;
+      return m ? `UTC${sign}${h}:${String(m).padStart(2, "0")}` : `UTC${sign}${h}`;
+    }
+
+    function analyzeDstStatus(date, zone) {
+      const year = date.getUTCFullYear();
+      const jan = new Date(Date.UTC(year, 0, 15, 12, 0));
+      const jul = new Date(Date.UTC(year, 6, 15, 12, 0));
+      const janOffset = zoneOffsetMinutes(jan, zone);
+      const julOffset = zoneOffsetMinutes(jul, zone);
+      const currentOffset = zoneOffsetMinutes(date, zone);
+
+      const hasDst = janOffset !== julOffset;
+      const standardOffset = Math.min(janOffset, julOffset);
+      const daylightOffset = Math.max(janOffset, julOffset);
+      const isDstNow = hasDst && currentOffset === daylightOffset;
+
+      return {
+        hasDst,
+        isDstNow,
+        currentOffset,
+        standardOffset,
+        daylightOffset,
+        currentLabel: !hasDst ? "全年標準時間（無夏令）" : (isDstNow ? "☀️ 夏令時間 (DST)" : "❄️ 冬令時間 (標準)"),
+        shortBadge: !hasDst ? "無夏令制" : (isDstNow ? "☀️ 夏令 DST" : "❄️ 冬令標準"),
+        badgeClass: !hasDst ? "dst-none" : (isDstNow ? "dst-summer" : "dst-winter")
+      };
+    }
+
+    function getZoneCoordinates(zone, placeInputValue = "") {
+      const cleanInput = placeInputValue.trim().toLowerCase();
+      if (cleanInput) {
+        const byPlace = cityCatalog.find(c =>
+          c.name.toLowerCase() === cleanInput ||
+          c.aliases.some(a => cleanInput.includes(a))
+        );
+        if (byPlace && byPlace.zone === zone) {
+          return { lat: byPlace.lat, lon: byPlace.lon, label: byPlace.name.split(" ")[0] };
+        }
+      }
+      const byZone = cityCatalog.find(c => c.zone === zone);
+      if (byZone) {
+        return { lat: byZone.lat, lon: byZone.lon, label: byZone.name.split(" ")[0] };
+      }
+      const now = getSelectedInstant();
+      const offsetHours = zoneOffsetMinutes(now, zone) / 60;
+      const lon = Math.max(-180, Math.min(180, offsetHours * 15));
+      const label = zone.split("/").pop().replaceAll("_", " ");
+      return { lat: 20, lon, label };
     }
 
     function matchPlaceToZone(value) {
       const normalized = value.trim().toLowerCase();
       if (!normalized) return "";
-      const tokens = normalized.match(/[a-z]{2,5}/g) || [];
-      const exact = places.find(([name]) => name.toLowerCase() === normalized);
-      const abbreviation = places.find(([name]) => tokens.includes(name.toLowerCase()));
-      const fuzzy = places.find(([name]) => name.toLowerCase().includes(normalized) || normalized.includes(name.toLowerCase()));
-      return (exact || abbreviation || fuzzy || [null, ""])[1];
+      const found = cityCatalog.find(c =>
+        c.name.toLowerCase().includes(normalized) ||
+        c.aliases.some(a => a === normalized || normalized.includes(a))
+      );
+      return found ? found.zone : "";
     }
 
     function selectedTimeOwner() {
@@ -643,12 +1221,254 @@
       return selectedTimeOwner() === "target" ? $("targetZone").value : $("sourceZone").value;
     }
 
+    function getSelectedInstant() {
+      if (!$("sourceDateTime").value) return new Date();
+      return zonedTimeToUtc($("sourceDateTime").value, inputZone());
+    }
+
+    function getSubsolarPoint(date) {
+      const start = new Date(Date.UTC(date.getUTCFullYear(), 0, 0));
+      const dayOfYear = (date - start) / 86400000;
+      const declination = -23.44 * Math.cos((2 * Math.PI / 365) * (dayOfYear + 10));
+      const utcHours = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
+      let subsolarLon = (12 - utcHours) * 15;
+      if (subsolarLon > 180) subsolarLon -= 360;
+      if (subsolarLon < -180) subsolarLon += 360;
+      return [subsolarLon, declination];
+    }
+
+    function createBandPolygon(offsetHours) {
+      const centerLon = offsetHours === 12 ? 172.5 : (offsetHours === -12 ? -172.5 : offsetHours * 15);
+      const halfWidth = 7.5;
+      const minLon = Math.max(-180, centerLon - halfWidth);
+      const maxLon = Math.min(180, centerLon + halfWidth);
+      const coords = [];
+      for (let lat = -85; lat <= 85; lat += 5) coords.push([minLon, lat]);
+      for (let lat = 85; lat >= -85; lat -= 5) coords.push([maxLon, lat]);
+      coords.push([minLon, -85]);
+      return {
+        type: "Feature",
+        geometry: {
+          type: "Polygon",
+          coordinates: [coords]
+        }
+      };
+    }
+
+    function drawGlobe() {
+      const canvas = $("globeCanvas");
+      const ctx = canvas.getContext("2d");
+      const width = canvas.width;
+      const height = canvas.height;
+      ctx.clearRect(0, 0, width, height);
+
+      const projection = viewMode === "3D"
+        ? d3.geoOrthographic()
+            .scale(width * 0.43)
+            .translate([width / 2, height / 2])
+            .rotate(rotation)
+            .clipAngle(90)
+        : d3.geoEquirectangular()
+            .scale(width / (2 * Math.PI) * 0.94)
+            .translate([width / 2, height / 2]);
+
+      const path = d3.geoPath(projection, ctx);
+      const sphere = { type: "Sphere" };
+
+      ctx.beginPath();
+      path(sphere);
+      const seaGrad = ctx.createRadialGradient(width * 0.38, height * 0.35, 20, width / 2, height / 2, width * 0.45);
+      seaGrad.addColorStop(0, "#2563eb");
+      seaGrad.addColorStop(1, "#0f172a");
+      ctx.fillStyle = seaGrad;
+      ctx.fill();
+
+      if (showTimezoneBands) {
+        for (let offset = -12; offset <= 12; offset++) {
+          const poly = createBandPolygon(offset);
+          ctx.beginPath();
+          path(poly);
+          ctx.fillStyle = offset % 2 === 0 ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.08)";
+          ctx.fill();
+        }
+      }
+
+      if (worldLand) {
+        ctx.beginPath();
+        path(worldLand);
+        ctx.fillStyle = "#10b981";
+        ctx.fill();
+        ctx.lineWidth = 0.8;
+        ctx.strokeStyle = "#047857";
+        ctx.stroke();
+      }
+      if (worldCountries) {
+        ctx.beginPath();
+        path(worldCountries);
+        ctx.lineWidth = 0.45;
+        ctx.strokeStyle = "rgba(255,255,255,0.32)";
+        ctx.stroke();
+      }
+
+      const graticule = d3.geoGraticule().step([15, 30])();
+      ctx.beginPath();
+      path(graticule);
+      ctx.lineWidth = 0.5;
+      ctx.strokeStyle = "rgba(255,255,255,0.2)";
+      ctx.stroke();
+
+      const primeMeridian = {
+        type: "LineString",
+        coordinates: d3.range(-85, 86, 5).map(lat => [0, lat])
+      };
+      ctx.beginPath();
+      path(primeMeridian);
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = "rgba(250, 204, 21, 0.75)";
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const instant = getSelectedInstant();
+      const [sunLon, sunLat] = getSubsolarPoint(instant);
+      const nightCenter = [sunLon >= 0 ? sunLon - 180 : sunLon + 180, -sunLat];
+      const nightCircle = d3.geoCircle().center(nightCenter).radius(90)();
+      ctx.beginPath();
+      path(nightCircle);
+      ctx.fillStyle = "rgba(2, 6, 23, 0.46)";
+      ctx.fill();
+
+      const sourceZone = $("sourceZone").value;
+      const targetZone = $("targetZone").value;
+      const srcOffsetHr = Math.round(zoneOffsetMinutes(instant, sourceZone) / 60);
+      const tgtOffsetHr = Math.round(zoneOffsetMinutes(instant, targetZone) / 60);
+
+      if (showTimezoneBands) {
+        if (activeTeachingOffset !== null) {
+          ctx.beginPath();
+          path(createBandPolygon(activeTeachingOffset));
+          ctx.fillStyle = "rgba(245, 158, 11, 0.25)";
+          ctx.fill();
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = "rgba(251, 191, 36, 0.85)";
+          ctx.stroke();
+        }
+        ctx.beginPath();
+        path(createBandPolygon(srcOffsetHr));
+        ctx.fillStyle = "rgba(239, 68, 68, 0.22)";
+        ctx.fill();
+
+        ctx.beginPath();
+        path(createBandPolygon(tgtOffsetHr));
+        ctx.fillStyle = "rgba(6, 182, 212, 0.22)";
+        ctx.fill();
+      }
+
+      const srcCoord = getZoneCoordinates(sourceZone, $("sourcePlace").value);
+      const tgtCoord = getZoneCoordinates(targetZone, $("targetPlace").value);
+
+      const routeArc = {
+        type: "LineString",
+        coordinates: [
+          [srcCoord.lon, srcCoord.lat],
+          [tgtCoord.lon, tgtCoord.lat]
+        ]
+      };
+      ctx.beginPath();
+      path(routeArc);
+      ctx.lineWidth = 2.6;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = "#f8fafc";
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      function drawMarker(coord, color, tagTitle, timeStr) {
+        if (viewMode === "3D") {
+          const centerLon = -rotation[0];
+          const centerLat = -rotation[1];
+          const dist = d3.geoDistance([coord.lon, coord.lat], [centerLon, centerLat]);
+          if (dist > Math.PI / 2) return;
+        }
+        const pt = projection([coord.lon, coord.lat]);
+        if (!pt) return;
+
+        ctx.beginPath();
+        ctx.arc(pt[0], pt[1], 11, 0, Math.PI * 2);
+        ctx.fillStyle = color + "44";
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(pt[0], pt[1], 6, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+
+        const labelText = `${tagTitle} ${coord.label} ${timeStr}`;
+        ctx.font = "bold 12px 'Segoe UI', 'Noto Sans TC', sans-serif";
+        const textWidth = ctx.measureText(labelText).width;
+        const boxW = textWidth + 16;
+        const boxH = 26;
+        const boxX = Math.min(Math.max(8, pt[0] - boxW / 2), width - boxW - 8);
+        const boxY = pt[1] - 36 > 8 ? pt[1] - 36 : pt[1] + 12;
+
+        ctx.fillStyle = "rgba(15, 23, 42, 0.88)";
+        ctx.beginPath();
+        ctx.roundRect(boxX, boxY, boxW, boxH, 6);
+        ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = color;
+        ctx.stroke();
+
+        ctx.fillStyle = "#ffffff";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillText(labelText, boxX + 8, boxY + boxH / 2);
+      }
+
+      const srcTimeStr = formatInZone(instant, sourceZone, { hour: "2-digit", minute: "2-digit", hour12: false });
+      const tgtTimeStr = formatInZone(instant, targetZone, { hour: "2-digit", minute: "2-digit", hour12: false });
+
+      drawMarker(srcCoord, "#ef4444", "【我】", srcTimeStr);
+      drawMarker(tgtCoord, "#06b6d4", "【待轉換】", tgtTimeStr);
+
+      ctx.beginPath();
+      path(sphere);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "rgba(148, 163, 184, 0.5)";
+      ctx.stroke();
+    }
+
+    let animFrame = null;
+    function rotateGlobeTo(lon, lat = 20) {
+      if (animFrame) cancelAnimationFrame(animFrame);
+      const startRot = [...rotation];
+      const targetRot = [-lon, -Math.max(-55, Math.min(55, lat)), 0];
+      let diffLon = targetRot[0] - startRot[0];
+      if (diffLon > 180) diffLon -= 360;
+      if (diffLon < -180) diffLon += 360;
+
+      const duration = 520;
+      const startTime = performance.now();
+
+      function step(now) {
+        const t = Math.min(1, (now - startTime) / duration);
+        const ease = 1 - Math.pow(1 - t, 3);
+        rotation[0] = startRot[0] + diffLon * ease;
+        rotation[1] = startRot[1] + (targetRot[1] - startRot[1]) * ease;
+        drawGlobe();
+        if (t < 1) animFrame = requestAnimationFrame(step);
+      }
+      animFrame = requestAnimationFrame(step);
+    }
+
     function updateDateTimeCopy() {
       const targetMode = selectedTimeOwner() === "target";
-      $("dateTimeLabel").textContent = targetMode ? "對方公告的日期時間" : "我的日期時間";
+      $("dateTimeLabel").textContent = targetMode ? "對方（待轉換時區）公告的日期時間" : "我的所在地日期時間";
       $("dateTimeHint").textContent = targetMode
-        ? "例如研習公告寫 9:00 AM PDT，就選 PDT/目的地時區，並輸入公告上的日期時間。"
-        : "如果你拿到的是對方公告時間，請切換成「對方公告時間」。";
+        ? "例如國外研習寫 9:00 AM PDT/EST，請選擇「對方公告時間」，系統會自動依該日為夏令或冬令換算成你的時間。"
+        : "調整日期時間可觀察地球晝夜變化，以及歐美在冬令（11月~3月）與夏令（3月~11月）的時差改變。";
     }
 
     function googleDate(date) {
@@ -661,14 +1481,14 @@
 
     function currentEvent() {
       if (!$("sourceDateTime").value) return null;
-      const start = zonedTimeToUtc($("sourceDateTime").value, inputZone());
+      const start = getSelectedInstant();
       const end = new Date(start.getTime() + Number($("duration").value) * 60000);
-      const title = $("eventTitle").value.trim() || "線上研習";
+      const title = $("eventTitle").value.trim() || "跨時區線上研習";
       const link = $("videoUrl").value.trim();
       const reminder = Number($("reminder").value);
       const body = [
         `我的時間：${formatInZone(start, $("sourceZone").value, { dateStyle: "full", timeStyle: "short" })}`,
-        `目的地時間：${formatInZone(start, $("targetZone").value, { dateStyle: "full", timeStyle: "short" })}`,
+        `待轉換時區時間：${formatInZone(start, $("targetZone").value, { dateStyle: "full", timeStyle: "short" })}`,
         `提醒：請至少提早 ${reminder} 分鐘準備。`,
         link ? `視訊連結：${link}` : "",
         $("notes").value.trim()
@@ -676,44 +1496,151 @@
       return { start, end, title, link, reminder, body };
     }
 
+    function renderTeachingStrip(instant, sourceZone, targetZone) {
+      const strip = $("tzStrip");
+      strip.innerHTML = "";
+      const srcOffsetHr = Math.round(zoneOffsetMinutes(instant, sourceZone) / 60);
+      const tgtOffsetHr = Math.round(zoneOffsetMinutes(instant, targetZone) / 60);
+
+      teachingBands.forEach((band) => {
+        const bandTime = new Date(instant.getTime() + band.offset * 3600000);
+        const hr = bandTime.getUTCHours();
+        const min = String(bandTime.getUTCMinutes()).padStart(2, "0");
+        const clockStr = `${String(hr).padStart(2, "0")}:${min}`;
+        const isDay = hr >= 6 && hr < 18;
+        const centerLon = band.offset * 15;
+        const lonLabel = centerLon === 0 ? "0°經線" : (centerLon > 0 ? `${centerLon}°E` : `${Math.abs(centerLon)}°W`);
+
+        const cell = document.createElement("div");
+        const isSource = band.offset === srcOffsetHr;
+        const isTarget = band.offset === tgtOffsetHr;
+        const isTeaching = band.offset === activeTeachingOffset;
+
+        cell.className = [
+          "tz-Band",
+          isDay ? "day-cell" : "night-cell",
+          isSource ? "is-source" : "",
+          isTarget ? "is-target" : "",
+          isTeaching ? "is-teaching" : ""
+        ].filter(Boolean).join(" ");
+
+        const pills = [];
+        if (isSource) pills.push(`<span class="tz-pill me">我</span>`);
+        if (isTarget) pills.push(`<span class="tz-pill go">轉</span>`);
+        if (isTeaching) pills.push(`<span class="tz-pill teach">教學</span>`);
+
+        cell.innerHTML = `
+          <div>
+            <div class="tz-offset">${band.label}</div>
+            <div class="tz-lon">${lonLabel}</div>
+          </div>
+          <div class="tz-clock">${isDay ? "☀️" : "🌙"} ${clockStr}</div>
+          <div>
+            <div class="tz-city">${band.city}</div>
+            <div class="tz-marker-pills">${pills.join("")}</div>
+          </div>
+        `;
+
+        cell.addEventListener("click", () => {
+          activeTeachingOffset = band.offset;
+          rotateGlobeTo(band.offset * 15, 18);
+          update();
+        });
+
+        strip.appendChild(cell);
+      });
+
+      const activeBand = teachingBands.find(b => b.offset === activeTeachingOffset) || teachingBands[20];
+      const diffFromMe = activeBand.offset - srcOffsetHr;
+      const diffStr = diffFromMe === 0
+        ? "與「我的時區」相同"
+        : (diffFromMe > 0 ? `在我的東邊，時間比我快 ${diffFromMe} 小時（經度相差 +${diffFromMe * 15}°）` : `在我的西邊，時間比我慢 ${Math.abs(diffFromMe)} 小時（經度相差 ${diffFromMe * 15}°）`);
+
+      $("teachingDetailText").innerHTML = `
+        🎓 <strong>目前選取教學時區：${activeBand.label}（中心經度 ${activeBand.offset * 15}°｜代表地：${activeBand.city}）</strong><br>
+        👉 ${diffStr}。地球每往東 15° 時間加 1 小時，每往西 15° 時間減 1 小時。
+      `;
+    }
+
     function update() {
       const sourceZone = $("sourceZone").value;
       const targetZone = $("targetZone").value;
-      $("sourceStatus").textContent = sourceZone;
-      $("targetStatus").textContent = targetZone;
       updateDateTimeCopy();
 
       if (!$("sourceDateTime").value) return;
 
-      const instant = zonedTimeToUtc($("sourceDateTime").value, inputZone());
-      $("sourceTime").textContent = formatInZone(instant, sourceZone, { hour: "2-digit", minute: "2-digit", hour12: false });
-      $("sourceDate").textContent = formatInZone(instant, sourceZone, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-      $("targetTime").textContent = formatInZone(instant, targetZone, { hour: "2-digit", minute: "2-digit", hour12: false });
-      $("targetDate").textContent = formatInZone(instant, targetZone, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+      const instant = getSelectedInstant();
+      const srcDst = analyzeDstStatus(instant, sourceZone);
+      const tgtDst = analyzeDstStatus(instant, targetZone);
 
-      const diffMinutes = Math.round(zoneOffsetMinutes(instant, targetZone) - zoneOffsetMinutes(instant, sourceZone));
+      $("sourceStatus").textContent = `${$("sourcePlace").value || sourceZone} (${sourceZone})`;
+      $("targetStatus").textContent = `${$("targetPlace").value || targetZone} (${targetZone})`;
+
+      const srcLon = Math.round((srcDst.currentOffset / 60) * 15);
+      const tgtLon = Math.round((tgtDst.currentOffset / 60) * 15);
+      $("sourceOffsetInfo").textContent = `${formatUtcOffset(srcDst.currentOffset)}｜標準時區經度約 ${srcLon >= 0 ? "東經 " + srcLon : "西經 " + Math.abs(srcLon)}°`;
+      $("targetOffsetInfo").textContent = `${formatUtcOffset(tgtDst.currentOffset)}｜標準時區經度約 ${tgtLon >= 0 ? "東經 " + tgtLon : "西經 " + Math.abs(tgtLon)}°`;
+
+      [$("sourceDstBadge"), $("resSourceDst")].forEach(el => {
+        el.textContent = srcDst.shortBadge;
+        el.className = `dst-badge ${srcDst.badgeClass}`;
+      });
+      [$("targetDstBadge"), $("resTargetDst")].forEach(el => {
+        el.textContent = tgtDst.shortBadge;
+        el.className = `dst-badge ${tgtDst.badgeClass}`;
+      });
+
+      $("sourceTime").textContent = formatInZone(instant, sourceZone, { hour: "2-digit", minute: "2-digit", hour12: false });
+      $("sourceDate").textContent = formatInZone(instant, sourceZone, { weekday: "short", year: "numeric", month: "long", day: "numeric" });
+      $("targetTime").textContent = formatInZone(instant, targetZone, { hour: "2-digit", minute: "2-digit", hour12: false });
+      $("targetDate").textContent = formatInZone(instant, targetZone, { weekday: "short", year: "numeric", month: "long", day: "numeric" });
+
+      const diffMinutes = Math.round(tgtDst.currentOffset - srcDst.currentOffset);
       const sign = diffMinutes >= 0 ? "+" : "-";
       const absMinutes = Math.abs(diffMinutes);
       const hours = Math.floor(absMinutes / 60);
       const minutes = absMinutes % 60;
       $("offsetText").textContent = minutes ? `${sign}${hours}小時${minutes}分` : `${sign}${hours} 小時`;
 
-      const sourceDay = formatInZone(instant, sourceZone, { day: "numeric" });
-      const targetDay = formatInZone(instant, targetZone, { day: "numeric" });
-      $("dayHint").textContent = sourceDay === targetDay ? "同一天" : "目的地日期不同，請留意跨日";
+      const sourceDay = formatInZone(instant, sourceZone, { year: "numeric", month: "2-digit", day: "2-digit" });
+      const targetDay = formatInZone(instant, targetZone, { year: "numeric", month: "2-digit", day: "2-digit" });
+      const dayText = sourceDay === targetDay ? "同一天" : "⚠️ 跨日（日期不同）";
+      $("dayHint").textContent = `${dayText}｜對應經度差約 ${(diffMinutes / 60 * 15).toFixed(0)}°`;
+
+      const winterDiffHr = (tgtDst.standardOffset - srcDst.standardOffset) / 60;
+      const summerDiffHr = (tgtDst.daylightOffset - srcDst.daylightOffset) / 60;
+      const wSign = winterDiffHr >= 0 ? "+" : "";
+      const sSign = summerDiffHr >= 0 ? "+" : "";
+
+      if (!srcDst.hasDst && !tgtDst.hasDst) {
+        $("dstComparisonText").innerHTML = `
+          📌 <strong>${sourceZone}</strong> 與 <strong>${targetZone}</strong> 雙方皆<strong>全年不實施夏令時間</strong>，因此不論冬天（1月）或夏天（7月），兩地時差全年固定為 <strong>${wSign}${winterDiffHr} 小時</strong>。
+        `;
+      } else {
+        $("dstComparisonText").innerHTML = `
+          📌 在您選擇的日期（${formatInZone(instant, sourceZone, { year: "numeric", month: "short", day: "numeric" })}）：
+          <strong>我方為「${srcDst.currentLabel}」(${formatUtcOffset(srcDst.currentOffset)})</strong>，
+          <strong>待轉換方為「${tgtDst.currentLabel}」(${formatUtcOffset(tgtDst.currentOffset)})</strong>。<br>
+          🔄 <strong>冬/夏令時差對照</strong>：夏令期間雙方相差 <strong>${sSign}${summerDiffHr} 小時</strong>；冬令標準時間期間雙方相差 <strong>${wSign}${winterDiffHr} 小時</strong>（相差 1 小時，教學時可點右上角按鈕一鍵切換觀察！）。
+        `;
+      }
 
       const event = currentEvent();
-      if (!event) return;
-      const params = new URLSearchParams({
-        action: "TEMPLATE",
-        text: event.title,
-        dates: `${googleDate(event.start)}/${googleDate(event.end)}`,
-        details: event.body,
-        location: event.link || "Online",
-        ctz: sourceZone
-      });
-      $("googleLink").href = `https://calendar.google.com/calendar/render?${params.toString()}`;
-      $("eventSummary").textContent = `${event.title}｜${formatInZone(event.start, sourceZone, { dateStyle: "medium", timeStyle: "short" })}（我） / ${formatInZone(event.start, targetZone, { dateStyle: "medium", timeStyle: "short" })}（目的地）｜提醒 ${event.reminder} 分鐘前`;
+      if (event) {
+        const params = new URLSearchParams({
+          action: "TEMPLATE",
+          text: event.title,
+          dates: `${googleDate(event.start)}/${googleDate(event.end)}`,
+          details: event.body,
+          location: event.link || "Online",
+          ctz: sourceZone
+        });
+        $("googleLink").href = `https://calendar.google.com/calendar/render?${params.toString()}`;
+        $("eventSummary").textContent = `${event.title}｜我：${formatInZone(event.start, sourceZone, { dateStyle: "medium", timeStyle: "short" })} (${srcDst.shortBadge}) ↔ 待轉換：${formatInZone(event.start, targetZone, { dateStyle: "medium", timeStyle: "short" })} (${tgtDst.shortBadge})`;
+      }
+
+      renderTeachingStrip(instant, sourceZone, targetZone);
+      drawGlobe();
     }
 
     function downloadIcs() {
@@ -741,12 +1668,13 @@
 
     fillZones($("sourceZone"));
     fillZones($("targetZone"));
-    $("sourceZone").value = zones.includes(deviceZone) ? deviceZone : "Asia/Taipei";
+    $("sourceZone").value = "Asia/Taipei";
     $("targetZone").value = "America/New_York";
-    $("sourceDateTime").value = partsInZone(new Date(Date.now() + 60 * 60 * 1000), $("sourceZone").value);
-    places.forEach(([name]) => {
+    $("sourceDateTime").value = partsInZone(new Date(), $("sourceZone").value);
+
+    cityCatalog.forEach((city) => {
       const option = document.createElement("option");
-      option.value = name;
+      option.value = city.name;
       $("placeList").appendChild(option);
     });
 
@@ -759,29 +1687,160 @@
 
     ["sourcePlace", "targetPlace"].forEach((id) => {
       $(id).addEventListener("input", () => {
+        const isSource = id === "sourcePlace";
         const zone = matchPlaceToZone($(id).value);
-        if (zone && zones.includes(zone)) $(id === "sourcePlace" ? "sourceZone" : "targetZone").value = zone;
+        if (zone && zones.includes(zone)) {
+          $(isSource ? "sourceZone" : "targetZone").value = zone;
+          const coord = getZoneCoordinates(zone, $(id).value);
+          rotateGlobeTo(coord.lon, coord.lat);
+        }
         update();
       });
     });
 
-    document.querySelectorAll("input, select, textarea").forEach((control) => control.addEventListener("input", update));
+    ["sourceZone", "targetZone"].forEach((id) => {
+      $(id).addEventListener("change", () => {
+        const isSource = id === "sourceZone";
+        const zone = $(id).value;
+        const foundCity = cityCatalog.find(c => c.zone === zone);
+        if (foundCity) $(isSource ? "sourcePlace" : "targetPlace").value = foundCity.name;
+        const coord = getZoneCoordinates(zone, $(isSource ? "sourcePlace" : "targetPlace").value);
+        rotateGlobeTo(coord.lon, coord.lat);
+        update();
+      });
+    });
+
+    document.querySelectorAll("input, select, textarea").forEach((control) => {
+      if (control.id !== "sourcePlace" && control.id !== "targetPlace") {
+        control.addEventListener("input", update);
+      }
+    });
+
+    $("jumpSummerBtn").addEventListener("click", () => {
+      const year = new Date().getFullYear();
+      const timePart = ($("sourceDateTime").value.split("T")[1]) || "09:00";
+      $("sourceDateTime").value = `${year}-07-15T${timePart}`;
+      update();
+    });
+
+    $("jumpWinterBtn").addEventListener("click", () => {
+      const year = new Date().getFullYear();
+      const timePart = ($("sourceDateTime").value.split("T")[1]) || "09:00";
+      $("sourceDateTime").value = `${year}-01-15T${timePart}`;
+      update();
+    });
+
+    $("jumpNowBtn").addEventListener("click", () => {
+      $("sourceDateTime").value = partsInZone(new Date(), inputZone());
+      update();
+    });
+
+    $("view3D").addEventListener("click", () => {
+      viewMode = "3D";
+      $("view3D").classList.add("active");
+      $("view2D").classList.remove("active");
+      drawGlobe();
+    });
+
+    $("view2D").addEventListener("click", () => {
+      viewMode = "2D";
+      $("view2D").classList.add("active");
+      $("view3D").classList.remove("active");
+      drawGlobe();
+    });
+
+    $("focusSourceBtn").addEventListener("click", () => {
+      const coord = getZoneCoordinates($("sourceZone").value, $("sourcePlace").value);
+      rotateGlobeTo(coord.lon, coord.lat);
+    });
+
+    $("focusTargetBtn").addEventListener("click", () => {
+      const coord = getZoneCoordinates($("targetZone").value, $("targetPlace").value);
+      rotateGlobeTo(coord.lon, coord.lat);
+    });
+
+    $("toggleBandsBtn").addEventListener("click", () => {
+      showTimezoneBands = !showTimezoneBands;
+      $("toggleBandsBtn").textContent = `時區色帶：${showTimezoneBands ? "開" : "關"}`;
+      drawGlobe();
+    });
+
+    $("stepWestBtn").addEventListener("click", () => {
+      activeTeachingOffset = activeTeachingOffset <= -12 ? 12 : activeTeachingOffset - 1;
+      rotateGlobeTo(activeTeachingOffset * 15, 18);
+      update();
+    });
+
+    $("stepEastBtn").addEventListener("click", () => {
+      activeTeachingOffset = activeTeachingOffset >= 12 ? -12 : activeTeachingOffset + 1;
+      rotateGlobeTo(activeTeachingOffset * 15, 18);
+      update();
+    });
+
+    $("setTeachAsSourceBtn").addEventListener("click", () => {
+      const band = teachingBands.find(b => b.offset === activeTeachingOffset);
+      if (band && zones.includes(band.zone)) {
+        $("sourceZone").value = band.zone;
+        $("sourcePlace").value = band.place;
+        update();
+      }
+    });
+
+    $("setTeachAsTargetBtn").addEventListener("click", () => {
+      const band = teachingBands.find(b => b.offset === activeTeachingOffset);
+      if (band && zones.includes(band.zone)) {
+        $("targetZone").value = band.zone;
+        $("targetPlace").value = band.place;
+        update();
+      }
+    });
+
+    const canvas = $("globeCanvas");
+    let isDragging = false;
+    let dragStart = [0, 0];
+    let rotStart = [0, 0];
+
+    canvas.addEventListener("pointerdown", (e) => {
+      if (viewMode !== "3D") return;
+      isDragging = true;
+      dragStart = [e.clientX, e.clientY];
+      rotStart = [rotation[0], rotation[1]];
+      canvas.setPointerCapture(e.pointerId);
+    });
+
+    canvas.addEventListener("pointermove", (e) => {
+      if (!isDragging || viewMode !== "3D") return;
+      const dx = e.clientX - dragStart[0];
+      const dy = e.clientY - dragStart[1];
+      rotation[0] = rotStart[0] + dx * 0.45;
+      rotation[1] = Math.max(-75, Math.min(75, rotStart[1] - dy * 0.45));
+      drawGlobe();
+    });
+
+    canvas.addEventListener("pointerup", () => { isDragging = false; });
+    canvas.addEventListener("pointercancel", () => { isDragging = false; });
+
     $("downloadIcs").addEventListener("click", downloadIcs);
     $("copySummary").addEventListener("click", async () => {
       const text = $("eventSummary").textContent;
       if (navigator.clipboard) {
         await navigator.clipboard.writeText(text);
-      } else {
-        const temporary = document.createElement("textarea");
-        temporary.value = text;
-        document.body.appendChild(temporary);
-        temporary.select();
-        document.execCommand("copy");
-        temporary.remove();
       }
       $("copySummary").textContent = "已複製";
-      setTimeout(() => $("copySummary").textContent = "複製摘要", 1400);
+      setTimeout(() => $("copySummary").textContent = "複製轉換摘要", 1400);
     });
+
+    fetch("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json")
+      .then(res => res.json())
+      .then(world => {
+        worldLand = topojson.feature(world, world.objects.land);
+        worldCountries = topojson.mesh(world, world.objects.countries, (a, b) => a !== b);
+        drawGlobe();
+      })
+      .catch(() => {
+        drawGlobe();
+      });
+
     update();
   </script>
 </body>
